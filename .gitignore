@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.log
+
+# Account-specific deploy config (not part of the open-source project)
+# The template IS tracked; actual config with account IDs is not.
+.deploy/*
+!.deploy/wrangler.jsonc.template
+
+# Environment files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# TypeScript build cache
+*.tsbuildinfo

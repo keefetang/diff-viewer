@@ -1,0 +1,111 @@
+/*
+ * Diff Viewer — CodeMirror 6 Editor Base Styles
+ *
+ * Bridges CM6's default shell to our design tokens.
+ * All colors trace back to global.css — no hardcoded hex values here.
+ *
+ * Strategy: minimal overrides — CM6 handles its own internal layout.
+ * We set the container, font, gutter, cursor, selection, and placeholder
+ * so the editor feels native to the surface system from first render.
+ */
+
+/* ================================================================
+   Editor Container
+   ================================================================ */
+
+.cm-editor {
+  height: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
+/* Focused editor — remove default outline (we rely on the host focus ring) */
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+/* ================================================================
+   Scroller
+   ================================================================ */
+
+.cm-scroller {
+  overflow: auto;
+  height: 100%;
+  line-height: 1.6;
+  font-family: var(--font-mono);
+}
+
+/* ================================================================
+   Gutters
+   ================================================================ */
+
+.cm-gutters {
+  background: var(--surface-elevated);
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  min-width: 2.5rem;
+  font-size: 0.8125rem;
+}
+
+.cm-lineNumbers .cm-gutterElement {
+  padding: 0 var(--space-2) 0 var(--space-1);
+  min-width: 2rem;
+  text-align: right;
+}
+
+/* ================================================================
+   Active line
+   ================================================================ */
+
+.cm-activeLine {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.cm-activeLineGutter {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-elevated));
+  color: var(--text-secondary);
+}
+
+/* ================================================================
+   Selection
+   ================================================================ */
+
+/* !important required: CM6 applies selection background via inline styles */
+.cm-selectionBackground,
+.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 20%, transparent) !important;
+}
+
+/* ================================================================
+   Cursor
+   ================================================================ */
+
+/* !important required: CM6 sets cursor color via inline styles */
+.cm-cursor,
+.cm-dropCursor {
+  border-left-color: var(--text) !important;
+}
+
+/* ================================================================
+   Placeholder
+   ================================================================ */
+
+.cm-placeholder {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* ================================================================
+   Tooltip (autocomplete, hover) — Phase 2+
+   ================================================================ */
+
+.cm-tooltip {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}

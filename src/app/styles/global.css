@@ -1,0 +1,482 @@
+/*
+ * Diff Viewer — Design System
+ *
+ * A precision instrument. The inspection bench, the diff board,
+ * the red-line markup on a legal document. Change is the subject —
+ * the interface exists to surface it with clarity and zero noise.
+ *
+ * Domain: comparison, change tracking, code review, precision analysis.
+ * The world of: pull request review, document red-lining, rediff,
+ * change logs, forensic inspection. Cool, neutral, analytical.
+ *
+ * Depth strategy: borders-only (clean, technical — no shadows).
+ * Spacing base: 4px.
+ * Typography: system stacks — sans for chrome, mono for editors.
+ *
+ * Signature token group: --diff-* — the raison d'être.
+ * Every other token exists to frame those four.
+ */
+
+/* ================================================================
+   CSS Reset — minimal, intentional
+   ================================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth scrolling only when user hasn't requested reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+html,
+body {
+  height: 100%;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+/* ================================================================
+   Design Tokens — Light Theme (default)
+   ================================================================
+   Named for the inspection world:
+   --surface:    background hierarchy — the bench the work sits on
+   --text:       foreground hierarchy — the ink of annotation
+   --border:     separation hierarchy — quiet structure
+   --accent:     interactive emphasis — a clear, decisive blue
+   --diff-*:     THE signature group — change visualization
+   ================================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* --- Surfaces ---
+     surface:          the canvas — cool blue-grey, analytical, not warm
+     surface-elevated: toolbar, panels — slightly lighter
+     surface-inset:    editor area, code blocks — slightly darker (recessed)
+     surface-overlay:  modal/dialog — floating above everything
+  */
+  --surface: #f4f6f8;
+  --surface-elevated: #ffffff;
+  --surface-inset: #e8ecf1;
+  --surface-overlay: #ffffff;
+
+  /* --- Text hierarchy ---
+     text:           primary — near-black with a cool tint
+     text-secondary: supporting — readable, present
+     text-muted:     metadata, labels, tertiary (≥ 4.5:1 on surface-inset)
+     text-faint:     disabled, placeholder, ghost
+                     intentionally below 4.5:1 — WCAG 1.4.3 exemption: inactive/disabled only
+     text-inverse:   on dark/accent backgrounds
+  */
+  --text: #1a1d21;
+  --text-secondary: #4a5060;
+  --text-muted: #6b7280;
+  --text-faint: #b0b7c3;   /* intentionally below 4.5:1 — inactive/disabled only */
+  --text-inverse: #f4f6f8;
+
+  /* --- Borders ---
+     border:        standard — defines regions without demanding attention
+     border-subtle: softer separation — barely there
+     border-strong: emphasis — hover states, active regions
+     border-focus:  focus rings — precise, clear blue
+  */
+  --border: rgba(26, 29, 33, 0.12);
+  --border-subtle: rgba(26, 29, 33, 0.06);
+  --border-strong: rgba(26, 29, 33, 0.20);
+  --border-focus: rgba(37, 99, 235, 0.50);
+
+  /* --- Accent / interactive ---
+     accent:       the blue of a precise technical tool — links, CTAs
+     accent-hover: deeper on hover
+     accent-active: pressed/active
+  */
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-active: #1e40af;
+
+  /* --- Semantic ---
+     status-error:   destructive, invalid
+     status-warning: caution, unsaved
+     status-success: confirmed, saved
+  */
+  --status-error: #dc2626;
+  --status-warning: #d97706;
+  --status-success: #16a34a;
+
+  /* ================================================================
+     Diff Colors — THE signature token group
+     ================================================================
+     These are the core design expression of this tool. Every other
+     token exists to frame these four.
+
+     Strategy: low-saturation wash for line backgrounds — subtle enough
+     to scan large diffs without eye fatigue. Richer tone for character
+     highlights — precise enough to pinpoint exact changes.
+
+     Light mode: clear green/red distinction, restrained saturation.
+     Dark mode: desaturated variants — readable but not harsh on dark bg.
+     ================================================================ */
+
+  /* Line-level backgrounds — whole added/deleted lines.
+     rgba with transparency — teal-green for additions, red-orange for removals. */
+  --diff-add-bg: rgba(0, 198, 157, 0.12);
+  --diff-remove-bg: rgba(245, 43, 0, 0.094);
+
+  /* Character-level highlights — the specific text that changed.
+     Stronger than line backgrounds — these are the primary signal. */
+  --diff-add-highlight: rgba(0, 180, 144, 0.28);
+  --diff-remove-highlight: rgba(255, 46, 0, 0.24);
+
+  /* Changed-line hint — lines in a diff chunk but not necessarily changed themselves.
+     Barely perceptible tint: "something changed nearby." */
+  --diff-change-hint: rgba(0, 0, 0, 0.025);
+
+  /* --- Typography ---
+     System font stacks. No external loading.
+     Sans for UI chrome. Mono for the editors — the core surface.
+  */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Segoe UI Mono',
+    Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Font size scale — minor third (1.2) with practical rounding */
+  --text-xs:   0.6875rem;  /* 11px — fine print, badges */
+  --text-sm:   0.8125rem;  /* 13px — labels, metadata */
+  --text-base: 0.9375rem;  /* 15px — body text */
+  --text-md:   1.0625rem;  /* 17px — emphasized body */
+  --text-lg:   1.25rem;    /* 20px — section headings */
+  --text-xl:   1.5rem;     /* 24px — page headings */
+  --text-2xl:  1.875rem;   /* 30px — hero/display */
+
+  /* Line height scale */
+  --leading-tight:   1.25;   /* headings, dense UI */
+  --leading-snug:    1.4;    /* compact body, labels */
+  --leading-normal:  1.6;    /* body text, reading */
+  --leading-relaxed: 1.75;   /* editor lines, generous */
+
+  /* Font weight scale */
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Letter spacing */
+  --tracking-tight:  -0.01em;  /* headings — compact */
+  --tracking-normal:  0;       /* body text */
+  --tracking-wide:    0.05em;  /* small labels, all-caps */
+
+  /* --- Spacing scale — 4px base unit ---
+     Named numerically (--space-N = N×4px) for clarity.
+     4px base keeps alignment precise across UI chrome and code gutters.
+  */
+  --space-1:  0.25rem;   /*  4px — icon gaps, tight pairs */
+  --space-2:  0.5rem;    /*  8px — within components */
+  --space-3:  0.75rem;   /* 12px — component padding */
+  --space-4:  1rem;      /* 16px — standard spacing */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px — between groups */
+  --space-8:  2rem;      /* 32px — section separation */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px — major landmarks */
+  --space-16: 4rem;      /* 64px — page-level spacing */
+
+  /* --- Border radius ---
+     Slightly rounded — technical precision, not harsh edges.
+     A diff tool is analytical, not playful. Keep radii restrained.
+  */
+  --radius-sm:   3px;
+  --radius-md:   5px;
+  --radius-lg:   8px;
+  --radius-full: 9999px;
+
+  /* --- Transitions ---
+     Fast and purposeful. A review tool should respond immediately.
+  */
+  --duration-fast:   100ms;
+  --duration-normal: 180ms;
+  --duration-slow:   300ms;
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* --- Z-index scale --- */
+  --z-base:     0;
+  --z-above:    10;
+  --z-toolbar:  100;
+  --z-dropdown: 200;
+  --z-overlay:  300;
+  --z-modal:    400;
+  --z-toast:    500;
+}
+
+/* ================================================================
+   Dark Theme
+   ================================================================
+   Deep cool charcoal — NOT warm, NOT pure black.
+   Slightly blue-grey tinted dark surfaces maintain the analytical
+   character in the dark. Higher surfaces are slightly lighter
+   (dark mode surface elevation).
+
+   Diff colors: desaturated considerably — still readable, not harsh.
+   The green/red relationship is preserved; the saturation is pulled
+   back to suit dark backgrounds without burning the eye.
+
+   Supports both system preference and manual override:
+   - No data-theme attribute → follows system preference
+   - data-theme="dark"  → always dark (overrides system light)
+   - data-theme="light" → always light (overrides system dark)
+   ================================================================ */
+
+/* ⚠ KEEP IN SYNC: dark tokens appear in TWO blocks — the media query
+   below and the :root[data-theme="dark"] block after it.
+   Update BOTH when changing values. */
+
+/* System dark mode (when not manually overridden to light) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    /* Surfaces — cool dark, escalating lightness with elevation */
+    --surface:          #13151a;
+    --surface-elevated: #1c1f26;
+    --surface-inset:    #0e1014;
+    --surface-overlay:  #22252d;
+
+    /* Text — cool light, descending prominence
+       text-muted: #8b95a5 → 4.72:1 on surface-elevated (#1c1f26) ✓ AA
+                           → 5.54:1 on surface-inset (#0e1014) ✓ AA
+       NOTE: dark mode needs a lighter muted value than light mode (#6b7280
+       passes on light surfaces but falls to ~3.4:1 on dark — split here) */
+    --text:           #e2e6ed;
+    --text-secondary: #9aa3b2;
+    --text-muted:     #8b95a5;   /* lighter than light-mode #6b7280 — meets 4.5:1 on dark surfaces */
+    --text-faint:     #3a3f4a;   /* intentionally below 4.5:1 — WCAG 1.4.3 exemption: inactive/disabled only */
+    --text-inverse:   #13151a;
+
+    /* Borders — white-based rgba for dark surfaces */
+    --border:        rgba(226, 230, 237, 0.10);
+    --border-subtle: rgba(226, 230, 237, 0.05);
+    --border-strong: rgba(226, 230, 237, 0.18);
+    --border-focus:  rgba(96, 165, 250, 0.50);
+
+    /* Accent — brighter blue for dark background legibility */
+    --accent:        #60a5fa;
+    --accent-hover:  #93c5fd;
+    --accent-active: #3b82f6;
+
+    /* Semantic — slightly desaturated for dark mode */
+    --status-error:   #f87171;
+    --status-warning: #fbbf24;
+    --status-success: #4ade80;
+
+    /* Diff colors — dark mode
+       Strategy: line backgrounds clearly tinted but not overwhelming.
+       Character highlights significantly brighter — they must pop against
+       the line background AND the editor surface.
+       Previous values (#0d1f17 / #1f0d10) were nearly indistinguishable
+       from the #13151a editor background. */
+     --diff-add-bg:      rgba(0, 255, 230, 0.118);   /* teal-green tint */
+    --diff-remove-bg:   rgba(255, 53, 35, 0.17);    /* red-orange tint */
+    --diff-add-highlight:    rgba(0, 255, 234, 0.23);   /* strong teal character highlight */
+    --diff-remove-highlight: rgba(254, 51, 33, 0.325);  /* strong red character highlight */
+
+    --diff-change-hint: rgba(255, 255, 255, 0.03);
+  }
+}
+
+/* ⚠ KEEP IN SYNC with the media query block above */
+/* Manual dark mode override (when user explicitly selects dark) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface:          #13151a;
+  --surface-elevated: #1c1f26;
+  --surface-inset:    #0e1014;
+  --surface-overlay:  #22252d;
+
+  --text:           #e2e6ed;
+  --text-secondary: #9aa3b2;
+  --text-muted:     #8b95a5;   /* lighter than light-mode #6b7280 — meets 4.5:1 on dark surfaces */
+  --text-faint:     #3a3f4a;   /* intentionally below 4.5:1 — WCAG 1.4.3 exemption: inactive/disabled only */
+  --text-inverse:   #13151a;
+
+  --border:        rgba(226, 230, 237, 0.10);
+  --border-subtle: rgba(226, 230, 237, 0.05);
+  --border-strong: rgba(226, 230, 237, 0.18);
+  --border-focus:  rgba(96, 165, 250, 0.50);
+
+  --accent:        #60a5fa;
+  --accent-hover:  #93c5fd;
+  --accent-active: #3b82f6;
+
+  --status-error:   #f87171;
+  --status-warning: #fbbf24;
+  --status-success: #4ade80;
+
+  --diff-add-bg:      rgba(0, 255, 230, 0.118);
+  --diff-remove-bg:   rgba(255, 53, 35, 0.17);
+  --diff-add-highlight:    rgba(0, 255, 234, 0.23);
+  --diff-remove-highlight: rgba(254, 51, 33, 0.325);
+
+  --diff-change-hint: rgba(255, 255, 255, 0.03);
+}
+
+/* ================================================================
+   Base Styles
+   ================================================================ */
+
+body {
+  background-color: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  min-height: 100%;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ================================================================
+   Focus Styles — accessible, visible, themed
+   ================================================================ */
+
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Remove default focus ring for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ================================================================
+   Selection — cool tint matching the analytical world
+   ================================================================ */
+
+::selection {
+  background-color: var(--accent);
+  color: var(--text-inverse);
+}
+
+/* ================================================================
+   Scrollbar Styling — subtle, matches theme
+   ================================================================ */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* WebKit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+/* ================================================================
+   Reduced Motion — respect user preference
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    /* scroll-behavior not needed here — base html rule is already gated on
+       prefers-reduced-motion: no-preference, so no override required */
+  }
+}
+
+/* ================================================================
+   Print Styles — hide chrome, show diff content
+   ================================================================
+   Use role/data attributes since Svelte scopes class names.
+   Components should use role="toolbar" and data-print="hide".
+   ================================================================ */
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  nav,
+  [role="toolbar"],
+  [role="separator"],
+  [data-print="hide"],
+  button {
+    display: none !important;
+  }
+
+  /* Let the diff view fill the page */
+  [data-pane="diff"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
