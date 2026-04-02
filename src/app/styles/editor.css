@@ -31,10 +31,12 @@
    ================================================================ */
 
 .cm-scroller {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden; /* Word wrap is on by default — no horizontal content. Prevents iOS Safari elastic bounce from creating page-level horizontal scroll. */
   height: 100%;
   line-height: 1.6;
   font-family: var(--font-mono);
+  overscroll-behavior: contain; /* Prevent scroll chaining to parent on both axes */
 }
 
 /* ================================================================
@@ -125,7 +127,66 @@
 }
 
 /* ================================================================
-   Tooltip (autocomplete, hover) — Phase 2+
+   Search panel — integrate with design system
+   ================================================================ */
+
+.cm-search.cm-panel {
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.cm-search.cm-panel input {
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.cm-search.cm-panel input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.cm-search.cm-panel button {
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.cm-search.cm-panel button:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cm-search.cm-panel label {
+  color: var(--text-secondary);
+}
+
+/* ================================================================
+   Search match highlights
+   ================================================================ */
+
+.cm-searchMatch {
+  background-color: color-mix(in srgb, var(--status-warning) 25%, transparent);
+}
+
+.cm-searchMatch-selected {
+  background-color: color-mix(in srgb, var(--status-warning) 45%, transparent);
+}
+
+/* ================================================================
+   Tooltip (autocomplete, hover)
    ================================================================ */
 
 .cm-tooltip {

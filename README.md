@@ -16,24 +16,54 @@ A text diff tool that's fast, private, and yours to deploy. No accounts, no cook
 - **Live updates** — Diffs on every keystroke via CodeMirror 6 merge view
 - **Collapse unchanged** — Focus on changes by collapsing identical regions
 - **Synchronized scrolling** — Both sides scroll together in side-by-side mode
+- **Unified view** — Single-column layout for mobile or narrow viewports
+- **Word wrap** — Toggle-able, on by default, persisted across sessions
+- **Search & replace** — Cmd+F / Ctrl+F with match highlighting
 - **Swap sides** — Swap original ↔ modified with one click
 
 ### Sharing
 
 - **Auto-save** — Content saves to server with debounce, URL updates automatically
 - **Shareable sessions** — Edit links (with write access) and read-only links
+- **Private sessions** — Token-gated viewing. Private sessions require the edit link to access
 - **Fork** — Read-only visitors can fork into their own editable session
 - **Link previews** — Shared links unfurl with diff stats in Slack, Discord, and social media
-- **90-day retention** — Sessions expire after 90 days of inactivity
+- **90-day retention** — Sessions expire after 90 days of inactivity (30 days for agent-created)
 
 ### Export
 
 - **Unified diff** (.diff) — Standard patch format
 - **Standalone HTML** — Self-contained file with styles
-- **PDF** — Print-ready via browser print
+- **PDF** — Full diff rendered via iframe (not limited to visible viewport)
 - **Clipboard** — Copy as rich text
 
-Scroll sync, dark mode (system + manual override), mobile layout (unified single-column view), and keyboard shortcuts for all primary actions.
+### Agent / API Access
+
+AI agents and scripts can create, update, and read sessions via pure HTTP — no SDK, no browser, no API key.
+
+```bash
+# Create a session (body is raw markdown/text)
+curl -X PUT https://diff.pentagram.me/api/sessions/SESSION_ID \
+  -H "Content-Type: application/json" \
+  -d '{"original": "old text", "modified": "new text", "title": "My diff"}'
+
+# Read as unified diff
+curl -H "Accept: text/markdown" https://diff.pentagram.me/SESSION_ID
+
+# Create a private session
+curl -X PUT https://diff.pentagram.me/api/sessions/SESSION_ID \
+  -H "Content-Type: application/json" \
+  -d '{"original": "old", "modified": "new", "private": true}'
+```
+
+Creation returns `{ id, editToken, url, editUrl }`. Agent-created sessions (no Turnstile token) get 30-day retention; browser-created sessions get 90 days. Rate limiting is the only gate — no API key required.
+
+### SEO & Content Negotiation
+
+- **Crawler-friendly index** — OG meta tags and feature description injected via HTMLRewriter
+- **`Accept: text/markdown`** on `/:id` returns unified diff as plain text
+
+Dark mode (system + manual override), mobile responsive layout with bottom sheet menu, and keyboard shortcuts for all primary actions.
 
 ## 🚀 Deploy to Cloudflare
 
@@ -107,20 +137,21 @@ wrangler secret put TURNSTILE_SECRET_KEY
 - **Frontend:** Svelte 5, @codemirror/merge, CodeMirror 6
 - **Backend:** Cloudflare Workers + Static Assets + KV
 - **Build:** Vite, TypeScript
-- **Bundle:** ~110kb gzipped — single request, no lazy-loaded chunks
+- **Bundle:** ~124kb gzipped — single request, no lazy-loaded chunks
 
 ## 🔒 Security
 
 - **Edit tokens** — Random tokens protect write access per session
+- **Private sessions** — Token-gated viewing prevents unauthorized access (returns 404, not 403)
 - **Rate limiting** — All API endpoints are rate-limited (30 writes/min, 60 reads/min)
-- **Turnstile** — Optional invisible bot protection on session creation
+- **Turnstile** — Optional bot protection on browser session creation. Agents bypass via rate limiting
 - **Security headers** — CSP with per-request nonces, Referrer-Policy, and other hardened defaults
 - **Input validation** — Content size limits (1 MB) and strict API contracts
 
 ## 🔐 Privacy
 
 - **No cookies.** No user tracking. No personal data collected or stored.
-- **Stored per session:** Two text fields, optional title, two timestamps (created/updated), and a random edit token (not tied to any user).
+- **Stored per session:** Two text fields, optional title, two timestamps (created/updated), a random edit token (not tied to any user), and an optional private flag.
 - **Analytics:** Optional Cloudflare Web Analytics — cookie-free and GDPR-compliant.
 - **Note:** Cloudflare's platform provides standard request logs (including IPs) to the account owner. This app does not log them, but the platform makes them available.
 

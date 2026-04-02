@@ -1,7 +1,9 @@
 import { handleApi, handleCorsPreflight } from './api';
+import { getIndexHtml, getIndexMarkdown } from './index-content';
 import { applySecurityHeaders, NonceInjector } from './security';
-import { handleSession } from './ssr';
-import { escapeForHtml } from './shared';
+import { handleSession, computeDiff } from './ssr';
+import { escapeForHtml, timingSafeEqual } from './shared';
+import type { DiffSessionValue, SessionMetadata } from './shared';
 
 interface Env {
   ASSETS: Fetcher;
@@ -18,6 +20,62 @@ interface Env {
 }
 
 const SESSION_ID_RE = /^\/[A-Za-z0-9_-]{12}$/;
+
+// ---- Content Negotiation ----
+
+function wantsMarkdown(request: Request): boolean {
+  const accept = request.headers.get('Accept') || '';
+  // Match explicit text/markdown requests (CLI tools, programmatic clients).
+  // Exclude browsers — they always send text/html in their Accept header.
+  return accept.includes('text/markdown') && !accept.includes('text/html');
+}
+
+/**
+ * Return unified diff for a session via content negotiation.
+ * Public sessions are readable by anyone — the content is already visible
+ * via the UI. Private sessions require `X-Edit-Token`. Never exposes editToken.
+ */
+async function handleDiffContent(request: Request, env: Env, sessionId: string): Promise<Response> {
+  const { value: content, metadata } =
+    await env.SESSIONS.getWithMetadata<SessionMetadata>(sessionId);
+
+  if (content === null || metadata === null) {
+    return new Response('Not found', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
+  // Private sessions require a valid edit token — 404 to avoid revealing existence
+  if (metadata.private) {
+    const editTokenHeader = request.headers.get('X-Edit-Token');
+    if (!editTokenHeader || !timingSafeEqual(editTokenHeader, metadata.editToken)) {
+      return new Response('Not found', {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    }
+  }
+
+  let session: DiffSessionValue;
+  try {
+    session = JSON.parse(content) as DiffSessionValue;
+  } catch {
+    return new Response('Not found', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
+  const { unifiedDiff } = computeDiff(session.original, session.modified);
+
+  // X-Robots-Tag and Cache-Control added by applySecurityHeaders (isApi=true)
+  return new Response(unifiedDiff, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
+}
+
+// ---- Router ----
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -40,6 +98,22 @@ export default {
         return handleRobotsTxt();
       }
 
+      // Content negotiation — Accept: text/markdown returns raw content.
+      // Wrapped with applySecurityHeaders (isApi=true) for consistent
+      // security posture (HSTS, nosniff, noindex, etc.).
+      if (wantsMarkdown(request)) {
+        if (pathname === '/') {
+          const mdResponse = new Response(getIndexMarkdown(), {
+            headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+          });
+          return applySecurityHeaders(mdResponse, true);
+        }
+        if (SESSION_ID_RE.test(pathname)) {
+          const diffResponse = await handleDiffContent(request, env, pathname.slice(1));
+          return applySecurityHeaders(diffResponse, true);
+        }
+      }
+
       // Session ID route — SSR with OG tags + unified diff + bootstrap data
       if (SESSION_ID_RE.test(pathname)) {
         const nonce = crypto.randomUUID();
@@ -47,9 +121,10 @@ export default {
         return applySecurityHeaders(ssrResponse, false, nonce);
       }
 
-      // Everything else — serve static assets with config injection
+      // Everything else — serve static assets with config injection.
+      // For `/`, also injects SEO content and OG meta tags.
       const nonce = crypto.randomUUID();
-      const assetResponse = await handleAssets(request, env, nonce);
+      const assetResponse = await handleAssets(request, env, url, nonce);
       return applySecurityHeaders(assetResponse, false, nonce);
     } catch (err) {
       console.error(JSON.stringify({
@@ -87,10 +162,10 @@ function handleRobotsTxt(): Response {
 }
 
 // ---------------------------------------------------------------------------
-// Static assets with config injection
+// Static assets + SEO
 // ---------------------------------------------------------------------------
 
-async function handleAssets(request: Request, env: Env, nonce: string): Promise<Response> {
+async function handleAssets(request: Request, env: Env, url: URL, nonce: string): Promise<Response> {
   // Note: /assets/* requests are served directly by Workers Static Assets
   // (excluded via run_worker_first in wrangler.jsonc). Cache headers for
   // hashed Vite output are set via the _headers file in public/.
@@ -101,12 +176,38 @@ async function handleAssets(request: Request, env: Env, nonce: string): Promise<
     return response;
   }
 
+  const isIndex = url.pathname === '/';
+
   // Inject runtime config into HTML responses via HTMLRewriter.
   // NonceInjector adds `nonce` to ALL <script> tags (existing + appended),
   // enabling CSP nonce-based trust. Cloudflare's edge reads the nonce from
   // our CSP header and applies it to its own injected scripts too.
   let rewriter = new HTMLRewriter()
     .on('script', new NonceInjector(nonce));
+
+  // Index page — inject OG meta tags and SEO content for crawlers.
+  // #content { display: none } in the CSS bundle prevents flash for browser
+  // users; crawlers parsing raw HTML (no CSS) see the content.
+  if (isIndex) {
+    const indexUrl = escapeForHtml(url.origin + '/');
+    rewriter = rewriter
+      .on('head', {
+        element(el) {
+          el.append([
+            `<meta property="og:title" content="Diff Viewer" />`,
+            `<meta property="og:description" content="A fast, privacy-first text diff tool. Paste two texts, see a live diff with line and character-level highlights, and share via URL." />`,
+            `<meta property="og:type" content="website" />`,
+            `<meta property="og:url" content="${indexUrl}" />`,
+            `<meta name="twitter:card" content="summary" />`,
+          ].join('\n'), { html: true });
+        },
+      })
+      .on('div#content', {
+        element(el) {
+          el.setInnerContent(getIndexHtml(), { html: true });
+        },
+      });
+  }
 
   if (env.CF_ANALYTICS_TOKEN) {
     const token = escapeForHtml(env.CF_ANALYTICS_TOKEN);

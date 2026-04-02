@@ -74,9 +74,41 @@ export function downloadHtml(
   downloadBlob(blob, `${sanitizeFilename(title || 'diff')}.html`);
 }
 
-/** Print to PDF via browser print dialog. */
-export function printPdf(): void {
-  window.print();
+/**
+ * Print the full diff to PDF via browser print dialog.
+ * Opens a new window with the complete rendered HTML diff (bypassing CM6's
+ * virtual scrolling which only renders visible lines), triggers print,
+ * then closes the window.
+ */
+export function printPdf(original: string, modified: string, title?: string): void {
+  // Render the diff into a hidden same-origin iframe so the browser's print
+  // header/footer shows the real page URL (not about:blank or blob:).
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  iframe.style.opacity = '0';
+  document.body.appendChild(iframe);
+
+  const iframeDoc = iframe.contentDocument;
+  if (!iframeDoc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+
+  iframeDoc.open();
+  iframeDoc.write(buildHtmlDocument(original, modified, title));
+  iframeDoc.close();
+
+  iframe.contentWindow?.addEventListener('afterprint', () => {
+    document.body.removeChild(iframe);
+  });
+
+  // Brief delay for the iframe content to paint before triggering print
+  setTimeout(() => {
+    iframe.contentWindow?.print();
+  }, 100);
 }
 
 /**
@@ -315,8 +347,14 @@ function buildHtmlBody(original: string, modified: string, title?: string): stri
   }
 
   return `${titleHtml}
+<div class="diff-header"><span>Original</span><span>Modified</span></div>
 <table class="diff-table">
-<thead><tr><th colspan="2">Original</th><th colspan="2">Modified</th></tr></thead>
+<colgroup>
+  <col class="col-ln">
+  <col>
+  <col class="col-ln">
+  <col>
+</colgroup>
 <tbody>
 ${rows.join('\n')}
 </tbody>
@@ -399,20 +437,24 @@ h1 {
   font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
-  table-layout: fixed;
 }
 
-.diff-table th {
-  background: #eef0f3;
-  padding: 0.375rem 0.75rem;
-  text-align: left;
-  font-size: 0.75rem;
+/* Header row outside table — labels above each half */
+.diff-header {
+  display: flex;
+  justify-content: space-around;
+  padding: 0.375rem 0;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #6b7280;
   border-bottom: 1px solid rgba(26, 29, 33, 0.12);
+  background: #eef0f3;
 }
+
+/* Line number columns — minimal fixed width */
+.diff-table .col-ln { width: 2em; }
 
 .diff-table td {
   padding: 0 0.5rem;
@@ -423,12 +465,12 @@ h1 {
 }
 
 .diff-table .ln {
-  width: 3.5rem;
   text-align: right;
   color: #b0b7c3;
   user-select: none;
-  padding-right: 0.75rem;
+  padding: 0 0.25rem;
   font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .diff-table .del { background: #fff1f2; }
@@ -439,7 +481,7 @@ h1 {
 @media (prefers-color-scheme: dark) {
   body { color: #e2e6ed; background: #13151a; }
   h1 { color: #e2e6ed; }
-  .diff-table th { background: #1c1f26; color: #8b95a5; border-bottom-color: rgba(226,230,237,0.10); }
+  .diff-header { background: #1c1f26; color: #8b95a5; border-bottom-color: rgba(226,230,237,0.10); }
   .diff-table td { border-bottom-color: rgba(226,230,237,0.04); }
   .diff-table .ln { color: #3a3f4a; }
   .diff-table .del { background: #1f0d10; }

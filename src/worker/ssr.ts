@@ -33,6 +33,7 @@ interface BootstrapData {
     createdAt: number;
     updatedAt: number;
   };
+  private: boolean;
 }
 
 interface DiffStats {
@@ -52,7 +53,7 @@ interface DiffStats {
  * environments. The chunks describe changed regions by character position;
  * we convert these to line-based unified diff format.
  */
-function computeDiff(original: string, modified: string): {
+export function computeDiff(original: string, modified: string): {
   stats: DiffStats;
   unifiedDiff: string;
 } {
@@ -253,6 +254,18 @@ export async function handleSession(request: Request, env: Env, nonce: string): 
       .transform(shellResponse);
   }
 
+  // Private sessions: serve the bare SPA shell with no SSR content.
+  // The hash fragment (with edit token) never reaches the server, so we
+  // can't validate access here. The SPA will boot, extract the token from
+  // hash/localStorage, fetch via API (with X-Edit-Token), and either
+  // succeed or redirect to `/`.
+  if (metadata!.private) {
+    const shellResponse = await env.ASSETS.fetch(new Request(`${url.origin}/index.html`));
+    return new HTMLRewriter()
+      .on('script', new NonceInjector(nonce))
+      .transform(shellResponse);
+  }
+
   // Parse KV value — the stored JSON is `DiffSessionValue`
   let session: DiffSessionValue;
   try {
@@ -282,6 +295,7 @@ export async function handleSession(request: Request, env: Env, nonce: string): 
       createdAt: metadata!.createdAt,
       updatedAt: metadata!.updatedAt,
     },
+    private: false, // Only public sessions reach this code path (private bails early)
   };
 
   // CRITICAL: Escape ALL `<` to prevent </script> injection attacks

@@ -37,6 +37,7 @@
 
   const THEME_KEY = 'diff-viewer-theme';
   const LAYOUT_KEY = 'diff-viewer-layout';
+  const LINE_WRAP_KEY = 'diff-viewer-line-wrap';
   const SESSION_ID_RE = /^[A-Za-z0-9_-]{12}$/;
   const DELETE_UNDO_MS = 10_000;
 
@@ -56,9 +57,11 @@
   let isNarrow = $state(false);
   let isReadOnly = $state(false);
   let isCollapsed = $state(false);
+  let lineWrap = $state(true);
   let themeMode = $state<ThemeMode>('system');
   let layoutMode = $state<LayoutMode>('side-by-side');
   let lastSavedAt = $state<number | null>(null);
+  let isPrivate = $state(false);
 
   // Toast state
   let toastMessage = $state('');
@@ -74,6 +77,7 @@
   let deleteUndoOriginal: string | null = null;
   let deleteUndoModified: string | null = null;
   let deleteUndoTitle: string | null = null;
+  let deleteUndoPrivate = false;
   let deleteUndoTimer: ReturnType<typeof setTimeout> | undefined;
   let undoInProgress = false;
 
@@ -125,7 +129,10 @@
   // ─── Viewport tracking ─────────────────────────────────────────────────────
 
   $effect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
+    // 959px covers all phone landscape orientations (iPhone Pro Max = 932px)
+    // and small tablets in portrait. The desktop toolbar needs ~940px to fit
+    // all button groups without overflow.
+    const mq = window.matchMedia('(max-width: 959px)');
     isNarrow = mq.matches;
     const handler = (e: MediaQueryListEvent) => {
       isNarrow = e.matches;
@@ -146,7 +153,7 @@
     return null;
   }
 
-  function getBootstrapData(): { original: string; modified: string; title?: string; metadata?: { createdAt: number; updatedAt: number } } | null {
+  function getBootstrapData(): { original: string; modified: string; title?: string; metadata?: { createdAt: number; updatedAt: number }; private?: boolean } | null {
     const el = document.getElementById('__DATA__');
     if (!el?.textContent) return null;
     try {
@@ -155,15 +162,19 @@
         modified?: string;
         title?: string;
         metadata?: { createdAt?: number; updatedAt?: number };
+        private?: boolean;
       };
       if (typeof data.original === 'string' && typeof data.modified === 'string') {
-        const result: { original: string; modified: string; title?: string; metadata?: { createdAt: number; updatedAt: number } } = {
+        const result: { original: string; modified: string; title?: string; metadata?: { createdAt: number; updatedAt: number }; private?: boolean } = {
           original: data.original,
           modified: data.modified,
           title: data.title,
         };
         if (data.metadata && typeof data.metadata.updatedAt === 'number' && typeof data.metadata.createdAt === 'number') {
           result.metadata = { createdAt: data.metadata.createdAt, updatedAt: data.metadata.updatedAt };
+        }
+        if (typeof data.private === 'boolean') {
+          result.private = data.private;
         }
         return result;
       }
@@ -204,6 +215,7 @@
         if (bootstrap.metadata) {
           lastSavedAt = bootstrap.metadata.updatedAt;
         }
+        if (bootstrap.private !== undefined) isPrivate = bootstrap.private;
       } else {
         void loadSession(sessionId);
       }
@@ -229,6 +241,14 @@
       // localStorage unavailable — default to side-by-side
     }
 
+    // --- Line wrap ---
+    try {
+      const savedWrap = localStorage.getItem(LINE_WRAP_KEY);
+      if (savedWrap === 'false') lineWrap = false;
+    } catch {
+      // localStorage unavailable — default to true (wrap on)
+    }
+
     // --- Auto-save setup ---
     if (!isReadOnly) {
       autosave = createAutosave({
@@ -247,6 +267,8 @@
           lastSavedAt = metadata.updatedAt;
         },
       });
+      // Sync private flag so autosave includes it in every PUT request
+      autosave.setPrivate(isPrivate);
     } else {
       saveState = 'readonly';
     }
@@ -293,7 +315,8 @@
 
   async function loadSession(id: string): Promise<void> {
     try {
-      const data = await getSession(id);
+      // Pass editToken so private sessions can be fetched
+      const data = await getSession(id, editToken ?? undefined);
       if (data) {
         original = data.original;
         modified = data.modified;
@@ -301,12 +324,14 @@
         if (data.metadata) {
           lastSavedAt = data.metadata.updatedAt;
         }
+        isPrivate = data.private;
       } else {
         showToast('Session not found or expired');
         history.replaceState(null, '', '/');
         sessionId = nanoid(12);
         editToken = null;
         isReadOnly = false;
+        isPrivate = false;
         original = PLACEHOLDER.original;
         modified = PLACEHOLDER.modified;
         title = '';
@@ -374,6 +399,13 @@
     activeEditor()?.setCollapse(isCollapsed);
   }
 
+  /** Toggle word wrap in editors. */
+  function handleToggleLineWrap(): void {
+    lineWrap = !lineWrap;
+    activeEditor()?.setLineWrap(lineWrap);
+    try { localStorage.setItem(LINE_WRAP_KEY, String(lineWrap)); } catch { /* best effort */ }
+  }
+
   /** Toggle between side-by-side and unified layout. */
   function handleToggleLayout(): void {
     layoutMode = layoutMode === 'side-by-side' ? 'unified' : 'side-by-side';
@@ -392,9 +424,9 @@
     downloadHtml(original, modified, title || undefined);
   }
 
-  /** Print to PDF. */
+  /** Print full diff to PDF via generated HTML (bypasses CM6 virtual scrolling). */
   function handleExportPdf(): void {
-    printPdf();
+    printPdf(original, modified, title || undefined);
   }
 
   /** Copy rich text diff to clipboard. */
@@ -405,6 +437,18 @@
     } else {
       showToast('Failed to copy', { type: 'error' });
     }
+  }
+
+  // ─── Private toggle ────────────────────────────────────────────────────────
+
+  function handleTogglePrivate(): void {
+    if (!editToken || !autosave) return;
+    isPrivate = !isPrivate;
+    autosave.setPrivate(isPrivate);
+    // save() updates pending params (id, content, token) that flush() -> doSave() reads.
+    // flush() then clears the debounce timer and fires doSave() immediately.
+    autosave.save(sessionId, original, modified, title, editToken);
+    void autosave.flush();
   }
 
   // ─── Share ──────────────────────────────────────────────────────────────────
@@ -462,6 +506,7 @@
     orig: string,
     mod: string,
     sessionTitle?: string,
+    sessionPrivate?: boolean,
   ): Promise<{ id: string; editToken: string } | null> {
     try {
       const newId = nanoid(12);
@@ -469,7 +514,7 @@
       if (isTurnstileConfigured()) {
         turnstileToken = await getTurnstileToken();
       }
-      const result = await saveSession(newId, orig, mod, sessionTitle, undefined, turnstileToken);
+      const result = await saveSession(newId, orig, mod, sessionTitle, undefined, turnstileToken, sessionPrivate);
       if ('editToken' in result) {
         const created = result as CreateResponse;
         storeToken(newId, created.editToken);
@@ -501,10 +546,11 @@
       return;
     }
 
-    // Hold content for undo
+    // Hold content for undo (including private flag)
     const savedOriginal = original;
     const savedModified = modified;
     const savedTitle = title;
+    const savedPrivate = isPrivate;
     const savedSessionId = sessionId;
 
     try {
@@ -522,6 +568,7 @@
     deleteUndoOriginal = savedOriginal;
     deleteUndoModified = savedModified;
     deleteUndoTitle = savedTitle;
+    deleteUndoPrivate = savedPrivate;
 
     showToast('Session deleted.', {
       type: 'info',
@@ -538,6 +585,7 @@
       deleteUndoOriginal = null;
       deleteUndoModified = null;
       deleteUndoTitle = null;
+      deleteUndoPrivate = false;
       dismissToast();
       window.location.href = '/';
     }, DELETE_UNDO_MS);
@@ -552,16 +600,18 @@
     const orig = deleteUndoOriginal;
     const mod = deleteUndoModified;
     const savedTitle = deleteUndoTitle;
+    const savedPrivateFlag = deleteUndoPrivate;
     deleteUndoOriginal = null;
     deleteUndoModified = null;
     deleteUndoTitle = null;
+    deleteUndoPrivate = false;
 
     if (!orig || !mod) {
       window.location.href = '/';
       return;
     }
 
-    const created = await createNewSession(orig, mod, savedTitle ?? undefined);
+    const created = await createNewSession(orig, mod, savedTitle ?? undefined, savedPrivateFlag);
     if (!created) {
       showToast('Failed to restore session', { type: 'error' });
       setTimeout(() => { window.location.href = '/'; }, 2000);
@@ -605,6 +655,7 @@
     {isReadOnly}
     {isNarrow}
     {isCollapsed}
+    {lineWrap}
     {title}
     {layoutMode}
     {lastSavedAt}
@@ -614,6 +665,7 @@
     onNew={handleNew}
     onSwap={handleSwap}
     onToggleCollapse={handleToggleCollapse}
+    onToggleLineWrap={handleToggleLineWrap}
     onToggleLayout={handleToggleLayout}
     onExportDiff={handleExportDiff}
     onExportHtml={handleExportHtml}
@@ -622,18 +674,21 @@
     onShare={(type) => { void handleShare(type); }}
     onFork={() => { void handleFork(); }}
     onDelete={() => { void handleDelete(); }}
+    {isPrivate}
+    onTogglePrivate={handleTogglePrivate}
     onToggleTheme={handleThemeToggle}
     {themeMode}
   />
 
   <main class="editor-area" data-pane="diff">
     {#if isNarrow}
-      <MobileDiff bind:this={mobileDiff} {original} {modified} readonly={isReadOnly} onchange={handleMobileChange} onstats={handleStats} />
+      <MobileDiff bind:this={mobileDiff} {original} {modified} {lineWrap} readonly={isReadOnly} onchange={handleMobileChange} onstats={handleStats} />
     {:else if layoutMode === 'unified'}
       <MobileDiff
         bind:this={mobileDiff}
         {original}
         {modified}
+        {lineWrap}
         readonly={isReadOnly}
         onchange={handleMobileChange}
         onstats={handleStats}
@@ -643,6 +698,7 @@
         bind:this={diffEditor}
         {original}
         {modified}
+        {lineWrap}
         readonly={isReadOnly}
         {stats}
         onchange={handleChange}

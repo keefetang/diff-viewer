@@ -6,8 +6,9 @@
     getOriginalDoc,
     getChunks,
   } from '@codemirror/merge';
-  import { EditorView, lineNumbers, placeholder } from '@codemirror/view';
+  import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
   import { EditorState, Compartment, Text, ChangeSet } from '@codemirror/state';
+  import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
   import { computeStats } from '../lib/stats';
   import type { DiffStats } from '../lib/types';
 
@@ -15,16 +16,18 @@
     original: string;
     modified: string;
     readonly?: boolean;
+    lineWrap?: boolean;
     onchange: (content: string) => void;
     onstats?: (stats: DiffStats) => void;
   }
 
-  let { original, modified, readonly = false, onchange, onstats }: Props = $props();
+  let { original, modified, readonly = false, lineWrap = true, onchange, onstats }: Props = $props();
 
   let containerEl: HTMLDivElement;
   let view: EditorView | undefined;
   const readOnlyCompartment = new Compartment();
   const mergeCompartment = new Compartment();
+  const wrapCompartment = new Compartment();
 
   // ─── Imperative methods (exported for parent components) ──────────────
 
@@ -41,6 +44,12 @@
         }),
       ),
     });
+  }
+
+  /** Imperative — called by App.svelte on user toggle (not $effect, since wrap is user-initiated). */
+  export function setLineWrap(on: boolean): void {
+    if (!view) return;
+    view.dispatch({ effects: wrapCompartment.reconfigure(on ? EditorView.lineWrapping : []) });
   }
 
   // ─── View creation ───────────────────────────────────────────────────
@@ -60,6 +69,7 @@
         lineNumbers(),
         placeholder('Paste modified text here…'),
         readOnlyCompartment.of(EditorState.readOnly.of(isReadOnly)),
+        wrapCompartment.of(lineWrap ? EditorView.lineWrapping : []),
         mergeCompartment.of(
           unifiedMergeView({
             original: Text.of(orig.split('\n')),
@@ -74,6 +84,9 @@
             emitStats();
           }
         }),
+        // Search (Cmd+F / Ctrl+F) and highlight matching selections
+        keymap.of(searchKeymap),
+        highlightSelectionMatches(),
         // Accessible name for the contenteditable textbox (WCAG aria-input-field-name)
         EditorView.contentAttributes.of({ 'aria-label': 'Unified diff editor' }),
         // Height constraint handled by scoped CSS (.mobile-diff :global(.cm-editor))

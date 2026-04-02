@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { MergeView } from '@codemirror/merge';
-  import { EditorView, lineNumbers, placeholder } from '@codemirror/view';
+  import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
   import { EditorState, Compartment } from '@codemirror/state';
+  import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
   import { computeStats } from '../lib/stats';
   import type { DiffStats } from '../lib/types';
 
@@ -10,16 +11,18 @@
     original: string;
     modified: string;
     readonly?: boolean;
+    lineWrap?: boolean;
     stats: DiffStats;
     onchange: (side: 'a' | 'b', content: string) => void;
     onstats: (stats: DiffStats) => void;
   }
 
-  let { original, modified, readonly = false, stats, onchange, onstats }: Props = $props();
+  let { original, modified, readonly = false, lineWrap = true, stats, onchange, onstats }: Props = $props();
 
   let containerEl: HTMLDivElement;
   let mergeView: MergeView | undefined;
   const readOnlyCompartment = new Compartment();
+  const wrapCompartment = new Compartment();
 
   // ─── Scroll sync ────────────────────────────────────────────────────────────
   // Mutex prevents feedback loops: when A scrolls and we programmatically set B,
@@ -69,11 +72,20 @@
     });
   }
 
+  /** Imperative — called by App.svelte on user toggle (not $effect, since wrap is user-initiated). */
+  export function setLineWrap(on: boolean): void {
+    if (!mergeView) return;
+    const effect = wrapCompartment.reconfigure(on ? EditorView.lineWrapping : []);
+    mergeView.a.dispatch({ effects: effect });
+    mergeView.b.dispatch({ effects: effect });
+  }
+
   function makeExtensions(isOriginal: boolean) {
     return [
       lineNumbers(),
       placeholder(isOriginal ? 'Paste original text here…' : 'Paste modified text here…'),
       readOnlyCompartment.of(EditorState.readOnly.of(readonly)),
+      wrapCompartment.of(lineWrap ? EditorView.lineWrapping : []),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
           onchange(isOriginal ? 'a' : 'b', update.state.doc.toString());
@@ -83,6 +95,9 @@
           }
         }
       }),
+      // Search (Cmd+F / Ctrl+F) and highlight matching selections
+      keymap.of(searchKeymap),
+      highlightSelectionMatches(),
       // Accessible name for the contenteditable textbox (WCAG aria-input-field-name)
       EditorView.contentAttributes.of({
         'aria-label': isOriginal ? 'Original text editor' : 'Modified text editor',

@@ -12,9 +12,14 @@
    * Design system: borders-only depth, cool analytical surface, ink text.
    * All values via CSS custom properties — no global.css import.
    */
+  import { fly, fade } from 'svelte/transition';
   import { MAX_CONTENT_SIZE } from '../lib/types';
   import type { DiffStats, LayoutMode, SaveState, SizeWarning, ThemeMode } from '../lib/types';
   import { formatStats, formatStatsTooltip } from '../lib/stats';
+
+  const reducedMotion = typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
 
   // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -26,6 +31,7 @@
     isReadOnly: boolean;
     isNarrow: boolean;
     isCollapsed: boolean;
+    lineWrap?: boolean;
     title: string;
     layoutMode?: LayoutMode;
     lastSavedAt?: number | null;
@@ -35,6 +41,7 @@
     onNew: () => void;
     onSwap: () => void;
     onToggleCollapse: () => void;
+    onToggleLineWrap?: () => void;
     onToggleLayout?: () => void;
     onExportDiff: () => void;
     onExportHtml: () => void;
@@ -43,6 +50,8 @@
     onShare: (type: 'edit' | 'readonly') => void;
     onFork: () => void;
     onDelete: () => void;
+    isPrivate?: boolean;
+    onTogglePrivate?: () => void;
     onToggleTheme: () => void;
     themeMode: ThemeMode;
   }
@@ -53,6 +62,7 @@
     isReadOnly,
     isNarrow,
     isCollapsed,
+    lineWrap = true,
     title,
     layoutMode = 'side-by-side',
     lastSavedAt = null,
@@ -62,6 +72,7 @@
     onNew,
     onSwap,
     onToggleCollapse,
+    onToggleLineWrap,
     onToggleLayout,
     onExportDiff,
     onExportHtml,
@@ -70,6 +81,8 @@
     onShare,
     onFork,
     onDelete,
+    isPrivate = false,
+    onTogglePrivate,
     onToggleTheme,
     themeMode,
   }: Props = $props();
@@ -219,9 +232,20 @@
   let statsDisplay = $derived(formatStats(stats));
   let statsTooltip = $derived(stats.chunks > 0 ? formatStatsTooltip(stats) : '');
 
-  // Theme toggle: visible text IS the accessible name (no separate aria-label).
-  // Lighthouse requires visible text to match the accessible name (WCAG 2.5.3).
-  let themeLabel = $derived(themeMode === 'dark' ? '☾ Dark' : themeMode === 'light' ? '☀ Light' : 'Auto');
+  // Theme toggle: icon-only, 3-state cycle (dark → light → system).
+  // ☀ (sun) when dark → click to go light; ☾ (moon) when light → click to go system;
+  // ◐ (half-circle) when system → click to toggle.
+  let themeIcon = $derived(themeMode === 'dark' ? '☀' : themeMode === 'light' ? '☾' : '◐');
+  let themeTitle = $derived(
+    themeMode === 'dark' ? 'Switch to light mode'
+    : themeMode === 'light' ? 'Use system theme'
+    : 'Toggle dark mode'
+  );
+  let themeLabel = $derived(
+    themeMode === 'dark' ? 'Light mode'
+    : themeMode === 'light' ? 'System theme'
+    : 'Toggle theme'
+  );
 </script>
 
 <svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
@@ -232,9 +256,11 @@
   {#if !isNarrow}
     <!-- ═══════════════════════════════════════════════════════
          DESKTOP LAYOUT
+         Left:  "Diff Viewer" [New] [Swap] | [Export▾] [Copy Diff] [Share▾] | [Fork] [Delete] | Save state
+         Right: [Split/Unified] [Wrap] [Collapse] | [☀/☾/◐] | Stats
          ═══════════════════════════════════════════════════════ -->
 
-    <!-- Group 1: Brand + New + Swap -->
+    <!-- Left: Brand + New + Swap -->
     <div class="btn-group">
       <span class="app-title">Diff Viewer</span>
       {#if !isReadOnly}
@@ -243,39 +269,8 @@
       {/if}
     </div>
 
-    <!-- Group 2: Collapse + Layout -->
+    <!-- Left: Export + Copy + Share -->
     <div class="btn-group">
-      <button
-        class="tool-btn"
-        class:active={isCollapsed}
-        onclick={onToggleCollapse}
-        title="Collapse unchanged regions"
-        aria-label="Toggle collapse unchanged"
-        aria-pressed={isCollapsed}
-      >Collapse</button>
-      {#if onToggleLayout}
-        <button
-          class="tool-btn layout-toggle"
-          onclick={onToggleLayout}
-          title={layoutMode === 'side-by-side' ? 'Switch to unified view (Cmd+Shift+L)' : 'Switch to side-by-side view (Cmd+Shift+L)'}
-          aria-label={layoutMode === 'side-by-side' ? 'Split view — switch to unified' : 'Unified view — switch to split'}
-        ><!-- layout icon: two columns for split, single column for unified -->
-          <svg class="layout-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            {#if layoutMode === 'side-by-side'}
-              <rect x="1" y="2" width="14" height="12" rx="1.5" />
-              <line x1="8" y1="2" x2="8" y2="14" />
-            {:else}
-              <rect x="3" y="2" width="10" height="12" rx="1.5" />
-            {/if}
-          </svg>
-          {layoutMode === 'side-by-side' ? 'Split' : 'Unified'}
-        </button>
-      {/if}
-    </div>
-
-    <!-- Group 3: Export + Copy + Share -->
-    <div class="btn-group">
-      <!-- Export dropdown -->
       <div class="dropdown">
         <button
           class="tool-btn"
@@ -296,7 +291,6 @@
 
       <button class="tool-btn" onclick={onCopyRichText} title="Copy diff as rich text (Cmd+Shift+D)" aria-label="Copy diff as rich text">Copy Diff</button>
 
-      <!-- Share dropdown / popover -->
       <div class="dropdown">
         <button
           class="tool-btn"
@@ -308,6 +302,15 @@
         >Share ▾</button>
         {#if openDropdown === 'share'}
           <div class="dropdown-menu share-menu" role="menu">
+            {#if !isReadOnly && onTogglePrivate}
+              <button
+                class="dropdown-item"
+                class:dropdown-item-active={isPrivate}
+                role="menuitem"
+                onclick={() => dropdownAction(onTogglePrivate)}
+              >Private: {isPrivate ? 'On' : 'Off'}</button>
+              <div class="dropdown-divider" role="separator"></div>
+            {/if}
             <div class="share-title-field" role="none">
               <label class="share-label" for="share-title-input">Name this comparison (optional)</label>
               <!-- svelte-ignore a11y_autofocus -->
@@ -325,34 +328,29 @@
             {#if !isReadOnly}
               <button class="dropdown-item" role="menuitem" onclick={handleShareEdit}>Copy edit link</button>
             {/if}
-            <button class="dropdown-item" role="menuitem" onclick={handleShareReadOnly}>Copy read-only link</button>
+            <button
+              class="dropdown-item"
+              class:dropdown-item-disabled={isPrivate}
+              role="menuitem"
+              onclick={() => { if (!isPrivate) handleShareReadOnly(); }}
+              title={isPrivate ? 'Private sessions require the edit link' : ''}
+              aria-disabled={isPrivate}
+            >Copy read-only link</button>
           </div>
         {/if}
       </div>
     </div>
 
-    <!-- Group 4: Fork + Delete -->
+    <!-- Left: Fork + Delete -->
     <div class="btn-group">
       <button class="tool-btn" onclick={onFork} title="Fork as new session" aria-label="Fork session">Fork</button>
       {#if !isReadOnly}
-        <button class="tool-btn delete-btn" onclick={onDelete} title="Delete session" aria-label="Delete session">Delete</button>
+        <button class="tool-btn danger-btn" onclick={onDelete} title="Delete session" aria-label="Delete session">Delete</button>
       {/if}
     </div>
 
-    <!-- Group 5: Theme toggle -->
+    <!-- Left: Save state -->
     <div class="btn-group">
-      <button
-        class="tool-btn"
-        onclick={onToggleTheme}
-        title={themeLabel}
-      >{themeLabel}</button>
-    </div>
-
-    <!-- Spacer pushes save + stats to the right -->
-    <div class="toolbar-spacer"></div>
-
-    <!-- Group 6: Size warning + Save state + Stats -->
-    <div class="btn-group toolbar-right">
       {#if sizeDisplay}
         <span
           class="size-indicator"
@@ -361,13 +359,68 @@
           title={sizeWarning === 'critical' ? 'Content near size limit — save may fail' : 'Content approaching size limit'}
         >{sizeDisplay}</span>
       {/if}
-
       {#if isReadOnly}
         <span class="readonly-badge">Read-only</span>
       {:else if saveLabel}
         <span class="save-indicator {saveClass}">{saveLabel}</span>
       {/if}
+    </div>
 
+    <!-- Spacer pushes right-aligned groups to far right -->
+    <div class="toolbar-spacer"></div>
+
+    <!-- Right: View controls -->
+    <div class="btn-group">
+      {#if onToggleLayout}
+        <button
+          class="tool-btn layout-toggle"
+          onclick={onToggleLayout}
+          title={layoutMode === 'side-by-side' ? 'Switch to unified view (Cmd+Shift+L)' : 'Switch to side-by-side view (Cmd+Shift+L)'}
+          aria-label={layoutMode === 'side-by-side' ? 'Split view — switch to unified' : 'Unified view — switch to split'}
+        >
+          <svg class="layout-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            {#if layoutMode === 'side-by-side'}
+              <rect x="1" y="2" width="14" height="12" rx="1.5" />
+              <line x1="8" y1="2" x2="8" y2="14" />
+            {:else}
+              <rect x="3" y="2" width="10" height="12" rx="1.5" />
+            {/if}
+          </svg>
+          {layoutMode === 'side-by-side' ? 'Split' : 'Unified'}
+        </button>
+      {/if}
+      {#if onToggleLineWrap}
+        <button
+          class="tool-btn"
+          class:active={lineWrap}
+          onclick={onToggleLineWrap}
+          title="Toggle word wrap"
+          aria-label="Toggle word wrap"
+          aria-pressed={lineWrap}
+        >Wrap</button>
+      {/if}
+      <button
+        class="tool-btn"
+        class:active={isCollapsed}
+        onclick={onToggleCollapse}
+        title="Collapse unchanged regions"
+        aria-label="Toggle collapse unchanged"
+        aria-pressed={isCollapsed}
+      >Collapse</button>
+    </div>
+
+    <!-- Right: Theme icon -->
+    <div class="btn-group">
+      <button
+        class="theme-btn"
+        onclick={onToggleTheme}
+        title={themeTitle}
+        aria-label={themeTitle}
+      >{themeIcon}</button>
+    </div>
+
+    <!-- Right: Stats -->
+    <div class="btn-group">
       {#if statsDisplay}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <span class="stats-wrap" tabindex="0" role="group" aria-label="Diff statistics">
@@ -401,6 +454,15 @@
         >Share</button>
         {#if openDropdown === 'share'}
           <div class="dropdown-menu share-menu" role="menu">
+            {#if !isReadOnly && onTogglePrivate}
+              <button
+                class="dropdown-item"
+                class:dropdown-item-active={isPrivate}
+                role="menuitem"
+                onclick={() => dropdownAction(onTogglePrivate)}
+              >Private: {isPrivate ? 'On' : 'Off'}</button>
+              <div class="dropdown-divider" role="separator"></div>
+            {/if}
             <div class="share-title-field" role="none">
               <label class="share-label" for="share-title-input-mobile">Name this comparison (optional)</label>
               <!-- svelte-ignore a11y_autofocus -->
@@ -418,7 +480,14 @@
             {#if !isReadOnly}
               <button class="dropdown-item" role="menuitem" onclick={handleShareEdit}>Copy edit link</button>
             {/if}
-            <button class="dropdown-item" role="menuitem" onclick={handleShareReadOnly}>Copy read-only link</button>
+            <button
+              class="dropdown-item"
+              class:dropdown-item-disabled={isPrivate}
+              role="menuitem"
+              onclick={() => { if (!isPrivate) handleShareReadOnly(); }}
+              title={isPrivate ? 'Private sessions require the edit link' : ''}
+              aria-disabled={isPrivate}
+            >Copy read-only link</button>
           </div>
         {/if}
       </div>
@@ -440,7 +509,7 @@
       {/if}
     </div>
 
-    <!-- Right: Overflow menu -->
+    <!-- Right: Overflow trigger -->
     <div class="toolbar-group overflow-wrap">
       <button
         class="tool-btn overflow-trigger"
@@ -451,47 +520,74 @@
         aria-label="More actions"
         title="More actions"
       >&#x22EF;</button>
-
-      {#if openDropdown === 'overflow'}
-        <div class="dropdown-menu dropdown-menu-right overflow-menu" role="menu">
-          {#if !isReadOnly}
-            <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onNew)}>New comparison</button>
-          {/if}
-
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onToggleCollapse)}>
-            {isCollapsed ? 'Expand unchanged' : 'Collapse unchanged'}
-          </button>
-
-          <div class="dropdown-divider" role="separator"></div>
-
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onExportDiff)}>Export diff (.diff)</button>
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onExportHtml)}>Export HTML</button>
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onExportPdf)}>Export PDF</button>
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onCopyRichText)}>Copy rich text</button>
-
-          <div class="dropdown-divider" role="separator"></div>
-
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onFork)}>Fork session</button>
-
-          {#if !isReadOnly}
-            <div class="dropdown-divider" role="separator"></div>
-            <button class="dropdown-item dropdown-item-danger" role="menuitem" onclick={() => dropdownAction(onDelete)}>Delete session</button>
-          {/if}
-
-          <div class="dropdown-divider" role="separator"></div>
-
-          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onToggleTheme)}>
-            {themeLabel}
-          </button>
-
-          {#if statsDisplay}
-            <div class="dropdown-meta">{statsDisplay}</div>
-          {/if}
-        </div>
-      {/if}
     </div>
   {/if}
 </header>
+
+<!-- ═══════════════════════════════════════════════════════
+     MOBILE BOTTOM SHEET — rendered outside toolbar to escape overflow-x: auto
+     ═══════════════════════════════════════════════════════ -->
+{#if isNarrow && openDropdown === 'overflow'}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="sheet-backdrop"
+    onclick={closeDropdowns}
+    onkeydown={(e) => { if (e.key === 'Escape') closeDropdowns(); }}
+    aria-hidden="true"
+    transition:fade={{ duration: reducedMotion ? 0 : 150 }}
+  ></div>
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <div
+    class="sheet"
+    role="menu"
+    aria-label="More actions"
+    onkeydown={(e) => { if (e.key === 'Escape') closeDropdowns(); }}
+    transition:fly={{ y: 300, duration: reducedMotion ? 0 : 200 }}
+  >
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-content">
+      {#if !isReadOnly}
+        <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onNew)}>New comparison</button>
+      {/if}
+
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onToggleCollapse)}>
+        {isCollapsed ? 'Expand unchanged' : 'Collapse unchanged'}
+      </button>
+
+      {#if onToggleLineWrap}
+        <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onToggleLineWrap)}>
+          Word wrap: {lineWrap ? 'On' : 'Off'}
+        </button>
+      {/if}
+
+      <div class="sheet-divider" role="separator"></div>
+
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onExportDiff)}>Export diff (.diff)</button>
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onExportHtml)}>Export HTML</button>
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onExportPdf)}>Export PDF</button>
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onCopyRichText)}>Copy rich text</button>
+
+      <div class="sheet-divider" role="separator"></div>
+
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onFork)}>Fork session</button>
+
+      {#if !isReadOnly}
+        <div class="sheet-divider" role="separator"></div>
+        <button class="sheet-item sheet-item-danger" role="menuitem" onclick={() => dropdownAction(onDelete)}>Delete session</button>
+      {/if}
+
+      <div class="sheet-divider" role="separator"></div>
+
+      <button class="sheet-item" role="menuitem" onclick={() => dropdownAction(onToggleTheme)}>
+        {themeIcon} {themeLabel}
+      </button>
+
+      {#if statsDisplay}
+        <div class="sheet-meta">{statsDisplay}</div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   /* ── Toolbar shell ── */
@@ -504,6 +600,7 @@
     background: var(--surface-elevated);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    min-width: 0; /* allow flex parent to constrain width below content size */
     z-index: var(--z-toolbar);
     gap: var(--space-2);
     min-height: 44px;
@@ -546,9 +643,9 @@
 
   .app-title {
     font-size: var(--text-sm);
-    font-weight: var(--weight-normal);
-    letter-spacing: var(--tracking-normal);
-    color: var(--text-muted);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-secondary);
     white-space: nowrap;
     margin-right: var(--space-1);
   }
@@ -594,15 +691,38 @@
     font-size: var(--text-xs);
   }
 
-  /* ── Delete button — inherits .tool-btn at rest, red on hover/focus ── */
+  /* ── Danger button (delete) — red text at rest, red bg on hover ── */
 
-  .delete-btn:hover {
+  .danger-btn {
     color: var(--status-error);
-    background: color-mix(in srgb, var(--status-error) 10%, transparent);
   }
 
-  .delete-btn:focus-visible {
-    color: var(--status-error);
+  .danger-btn:hover {
+    background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  }
+
+  .danger-btn:focus-visible {
+    outline-color: var(--status-error);
+  }
+
+  /* ── Theme button — icon only, same size as tool-btn ── */
+
+  .theme-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: var(--space-1);
+    line-height: 1;
+    transition: background var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out);
+  }
+
+  .theme-btn:hover {
+    background: var(--surface);
+    color: var(--text);
   }
 
   /* ── Dropdown ── */
@@ -655,6 +775,20 @@
   .dropdown-item:focus-visible {
     background: var(--surface-inset);
     outline: none;
+  }
+
+  .dropdown-item-active {
+    color: var(--accent);
+    font-weight: var(--weight-medium);
+  }
+
+  .dropdown-item-disabled {
+    color: var(--text-faint);
+    cursor: not-allowed;
+  }
+
+  .dropdown-item-disabled:hover {
+    background: none;
   }
 
   .dropdown-item-danger {
@@ -741,10 +875,6 @@
     font-size: var(--text-md);
     letter-spacing: 0.1em;
     padding: var(--space-1) var(--space-2);
-  }
-
-  .overflow-menu {
-    min-width: 200px;
   }
 
   /* ── Save indicator ── */
@@ -871,5 +1001,93 @@
 
   .layout-icon {
     flex-shrink: 0;
+  }
+
+  /* ── Bottom sheet (mobile overflow) ── */
+
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: var(--z-overlay);
+  }
+
+  .sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 70dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface-elevated);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    z-index: calc(var(--z-overlay) + 1);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .sheet-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-strong);
+    margin: var(--space-2) auto;
+  }
+
+  .sheet-content {
+    padding: 0 0 var(--space-2);
+  }
+
+  .sheet-item {
+    width: 100%;
+    background: none;
+    border: none;
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-normal);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    transition:
+      color var(--duration-fast) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out);
+    line-height: var(--leading-snug);
+  }
+
+  .sheet-item:hover {
+    background: var(--surface-inset);
+  }
+
+  .sheet-item:focus-visible {
+    background: var(--surface-inset);
+    outline: none;
+  }
+
+  .sheet-item-danger {
+    color: var(--status-error);
+  }
+
+  .sheet-item-danger:hover {
+    background: color-mix(in srgb, var(--status-error) 8%, transparent);
+  }
+
+  .sheet-divider {
+    height: 1px;
+    background: var(--border);
+    margin: var(--space-1) 0;
+  }
+
+  .sheet-meta {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 </style>

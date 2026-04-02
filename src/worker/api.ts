@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { timingSafeEqual } from './shared';
 import type { DiffSessionValue, SessionMetadata } from './shared';
 
 // ---------------------------------------------------------------------------
@@ -22,30 +23,8 @@ interface Env {
 
 const SESSION_ID_RE = /^[A-Za-z0-9_-]{12}$/;
 const MAX_CONTENT_LENGTH = 1_048_576; // 1 MB — allows two 512 KB texts + title
-const EXPIRATION_TTL = 7_776_000;     // 90 days in seconds
-
-// ---------------------------------------------------------------------------
-// Token comparison (constant-time for equal-length strings)
-// ---------------------------------------------------------------------------
-
-/**
- * Constant-time string comparison using the Workers-native implementation.
- * Edit tokens are always nanoid(24) so lengths always match in practice.
- * A length mismatch returns false immediately — acceptable since it already
- * reveals the token is wrong without leaking content information.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const encoder = new TextEncoder();
-  const bufA = encoder.encode(a);
-  const bufB = encoder.encode(b);
-  if (bufA.byteLength !== bufB.byteLength) return false;
-  // Workers runtime provides timingSafeEqual on SubtleCrypto, but the DOM
-  // lib's type definition doesn't include it — cast to access it.
-  const subtle = crypto.subtle as SubtleCrypto & {
-    timingSafeEqual(a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView): boolean;
-  };
-  return subtle.timingSafeEqual(bufA, bufB);
-}
+const EXPIRATION_TTL = 7_776_000;       // 90 days — browser-created sessions
+const AGENT_EXPIRATION_TTL = 2_592_000; // 30 days — agent/script-created sessions (no Turnstile)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +48,7 @@ function corsHeaders(env: Env): Headers {
   const headers = new Headers();
   headers.set('Access-Control-Allow-Origin', env.CORS_ORIGIN || '*');
   headers.set('Access-Control-Allow-Methods', 'GET, PUT, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Edit-Token');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Edit-Token, X-Private');
   headers.set('Access-Control-Max-Age', '86400');
   return headers;
 }
@@ -201,7 +180,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
     // --- Route by method ---
     switch (request.method) {
       case 'GET':
-        return await handleGet(id, env, cors);
+        return await handleGet(id, request, env, cors);
       case 'PUT':
         return await handlePut(id, request, env, cors);
       case 'DELETE':
@@ -225,6 +204,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
 
 async function handleGet(
   id: string,
+  request: Request,
   env: Env,
   cors: Headers,
 ): Promise<Response> {
@@ -233,6 +213,15 @@ async function handleGet(
 
   if (value === null || metadata === null) {
     return errorResponse('Session not found', 404, cors);
+  }
+
+  // Private sessions require a valid edit token to view — return 404 (not
+  // 403) to avoid revealing that the session exists.
+  if (metadata.private) {
+    const editTokenHeader = request.headers.get('X-Edit-Token');
+    if (!editTokenHeader || !timingSafeEqual(editTokenHeader, metadata.editToken)) {
+      return errorResponse('Session not found', 404, cors);
+    }
   }
 
   // KV value is a JSON-serialized DiffSessionValue
@@ -253,6 +242,7 @@ async function handleGet(
         createdAt: metadata.createdAt,
         updatedAt: metadata.updatedAt,
       },
+      private: !!metadata.private,
     },
     200,
     cors,
@@ -321,36 +311,52 @@ async function handlePut(
   // CREATE: no token + session doesn't exist → generate editToken, store, return 201
   if (existingValue === null && !editTokenHeader) {
     // --- Turnstile verification (only on creation, only if configured) ---
-    if (env.TURNSTILE_SECRET_KEY) {
-      const turnstileToken = typeof record.turnstileToken === 'string' ? record.turnstileToken : null;
-      if (!turnstileToken) {
-        return errorResponse('Bot verification failed', 403, cors);
-      }
+    // Turnstile is a fast-pass, not a gate. If a token is present, verify it
+    // (reject fakes). If absent, skip — rate limiting is the fallback.
+    // This allows agents/scripts to create sessions without a browser.
+    const turnstileToken = typeof record.turnstileToken === 'string' ? record.turnstileToken : null;
+    let hasTurnstile = false;
+
+    if (env.TURNSTILE_SECRET_KEY && turnstileToken) {
       const remoteIp = request.headers.get('cf-connecting-ip') || '';
       const valid = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, turnstileToken, remoteIp);
       if (!valid) {
         return errorResponse('Bot verification failed', 403, cors);
       }
+      hasTurnstile = true;
     }
 
     const now = Date.now();
     const editToken = nanoid(24);
+    // Private flag: from JSON body or X-Private header (agents may prefer headers over body fields)
+    const isPrivate = typeof record.private === 'boolean'
+      ? record.private
+      : request.headers.get('X-Private') === 'true';
+    // Browser sessions (Turnstile verified): 90 days. Agent sessions: 30 days.
+    const ttl = hasTurnstile ? EXPIRATION_TTL : AGENT_EXPIRATION_TTL;
     const metadata: SessionMetadata = {
       createdAt: now,
       updatedAt: now,
       editToken,
+      private: isPrivate,
+      ttl,
     };
 
     await env.SESSIONS.put(id, serialized, {
       metadata,
-      expirationTtl: EXPIRATION_TTL,
+      expirationTtl: ttl,
     });
 
+    // Build share URLs for the response
+    const origin = new URL(request.url).origin;
     return jsonResponse(
       {
         id,
         metadata: { createdAt: now, updatedAt: now },
         editToken,
+        private: isPrivate,
+        url: `${origin}/${id}`,
+        editUrl: `${origin}/${id}#token=${editToken}`,
       },
       201,
       cors,
@@ -364,23 +370,36 @@ async function handlePut(
       return errorResponse('Forbidden', 403, cors);
     }
 
-    // UPDATE: valid token + session exists → reset TTL, return 200
+    // UPDATE: valid token + session exists → reset TTL (preserved tier), return 200
     const now = Date.now();
+    // If `private` is explicitly set in the body, update it; otherwise preserve existing
+    // If `private` is explicitly set (JSON body or X-Private header), update; otherwise preserve
+    const privateHeader = request.headers.get('X-Private');
+    const isPrivate = typeof record.private === 'boolean'
+      ? record.private
+      : privateHeader !== null
+        ? privateHeader === 'true'
+        : !!existingMeta.private;
+    // Preserve the original TTL tier (browser 90d vs agent 30d)
+    const ttl = existingMeta.ttl ?? EXPIRATION_TTL;
     const metadata: SessionMetadata = {
       createdAt: existingMeta.createdAt,
       updatedAt: now,
       editToken: existingMeta.editToken,
+      private: isPrivate,
+      ttl,
     };
 
     await env.SESSIONS.put(id, serialized, {
       metadata,
-      expirationTtl: EXPIRATION_TTL,
+      expirationTtl: ttl,
     });
 
     return jsonResponse(
       {
         id,
         metadata: { createdAt: existingMeta.createdAt, updatedAt: now },
+        private: isPrivate,
       },
       200,
       cors,

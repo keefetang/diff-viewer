@@ -40,16 +40,14 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Smooth scrolling only when user hasn't requested reduced motion */
-@media (prefers-reduced-motion: no-preference) {
-  html {
-    scroll-behavior: smooth;
-  }
-}
+/* No scroll-behavior: smooth on html — it applies to ALL scrollable
+   descendants including CM6 editors, causing input lag on every scroll.
+   Use element.scrollTo({ behavior: 'smooth' }) for specific anchors. */
 
 html,
 body {
   height: 100%;
+  overflow-x: hidden; /* Prevent horizontal page scroll on narrow viewports */
 }
 
 img,
@@ -94,52 +92,40 @@ h6 {
   color-scheme: light;
 
   /* --- Surfaces ---
-     surface:          the canvas — cool blue-grey, analytical, not warm
-     surface-elevated: toolbar, panels — slightly lighter
-     surface-inset:    editor area, code blocks — slightly darker (recessed)
-     surface-overlay:  modal/dialog — floating above everything
+     Warm off-white palette — softer than pure grey, easier on the eyes.
   */
-  --surface: #f4f6f8;
+  --surface: #faf8f5;
   --surface-elevated: #ffffff;
-  --surface-inset: #e8ecf1;
+  --surface-inset: #f3f0eb;
   --surface-overlay: #ffffff;
 
   /* --- Text hierarchy ---
-     text:           primary — near-black with a cool tint
-     text-secondary: supporting — readable, present
-     text-muted:     metadata, labels, tertiary (≥ 4.5:1 on surface-inset)
-     text-faint:     disabled, placeholder, ghost
-                     intentionally below 4.5:1 — WCAG 1.4.3 exemption: inactive/disabled only
-     text-inverse:   on dark/accent backgrounds
+     Warm near-black, descending prominence.
+     text-muted: ≥ 4.5:1 on surface-inset (#f3f0eb)
   */
-  --text: #1a1d21;
-  --text-secondary: #4a5060;
-  --text-muted: #6b7280;
-  --text-faint: #b0b7c3;   /* intentionally below 4.5:1 — inactive/disabled only */
-  --text-inverse: #f4f6f8;
+  --text: #2c2824;
+  --text-secondary: #5c5650;
+  --text-muted: #706b66;
+  --text-faint: #b8b2ac;
+  --text-inverse: #faf8f5;
 
   /* --- Borders ---
-     border:        standard — defines regions without demanding attention
-     border-subtle: softer separation — barely there
-     border-strong: emphasis — hover states, active regions
-     border-focus:  focus rings — precise, clear blue
+     Warm-tinted borders — defines regions quietly.
   */
-  --border: rgba(26, 29, 33, 0.12);
-  --border-subtle: rgba(26, 29, 33, 0.06);
-  --border-strong: rgba(26, 29, 33, 0.20);
-  --border-focus: rgba(37, 99, 235, 0.50);
+  --border: rgba(44, 40, 36, 0.12);
+  --border-subtle: rgba(44, 40, 36, 0.06);
+  --border-strong: rgba(44, 40, 36, 0.20);
+  --border-focus: rgba(61, 109, 142, 0.50);
 
   /* --- Accent / interactive --- */
-  --accent: #2563eb;
+  --accent: #3d6d8e;
 
   /* --- Semantic ---
-     status-error:   destructive, invalid
-     status-warning: caution, unsaved
-     status-success: confirmed, saved
+     Muted, warm-tinted status colors.
   */
-  --status-error: #dc2626;
-  --status-warning: #d97706;
-  --status-success: #16a34a;
+  --status-error: #c4483e;
+  --status-warning: #9a7226;
+  --status-success: #3d7a4e;
 
   /* ================================================================
      Diff Colors — THE signature token group
@@ -274,35 +260,32 @@ h6 {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    /* Surfaces — cool dark, escalating lightness with elevation */
-    --surface:          #13151a;
-    --surface-elevated: #1c1f26;
-    --surface-inset:    #0e1014;
-    --surface-overlay:  #22252d;
+    /* Surfaces — warm dark charcoal, escalating lightness with elevation */
+    --surface:          #1c1a18;
+    --surface-elevated: #252320;
+    --surface-inset:    #141210;
+    --surface-overlay:  #2a2826;
 
-    /* Text — cool light, descending prominence
-       text-muted: #8b95a5 → 4.72:1 on surface-elevated (#1c1f26) ✓ AA
-                           → 5.54:1 on surface-inset (#0e1014) ✓ AA
-       NOTE: dark mode needs a lighter muted value than light mode (#6b7280
-       passes on light surfaces but falls to ~3.4:1 on dark — split here) */
-    --text:           #e2e6ed;
-    --text-secondary: #9aa3b2;
-    --text-muted:     #8b95a5;   /* lighter than light-mode #6b7280 — meets 4.5:1 on dark surfaces */
-    --text-faint:     #3a3f4a;   /* intentionally below 4.5:1 — WCAG 1.4.3 exemption: inactive/disabled only */
-    --text-inverse:   #13151a;
+    /* Text — warm light, descending prominence
+       text-muted: #908a84 → ≥ 4.5:1 on surface-inset (#141210) ✓ AA */
+    --text:           #e8e4df;
+    --text-secondary: #b5b0a9;
+    --text-muted:     #908a84;
+    --text-faint:     #524e4a;
+    --text-inverse:   #1c1a18;
 
-    /* Borders — white-based rgba for dark surfaces */
-    --border:        rgba(226, 230, 237, 0.10);
-    --border-subtle: rgba(226, 230, 237, 0.05);
-    --border-strong: rgba(226, 230, 237, 0.18);
-    --border-focus:  rgba(96, 165, 250, 0.50);
+    /* Borders — warm-tinted rgba for dark surfaces */
+    --border:        rgba(232, 228, 223, 0.12);
+    --border-subtle: rgba(232, 228, 223, 0.06);
+    --border-strong: rgba(232, 228, 223, 0.20);
+    --border-focus:  rgba(120, 160, 200, 0.50);
 
-    --accent:        #60a5fa;
+    --accent:        #6ba3c7;
 
     /* Semantic — slightly desaturated for dark mode */
-    --status-error:   #f87171;
-    --status-warning: #fbbf24;
-    --status-success: #4ade80;
+    --status-error:   #d4706a;
+    --status-warning: #cca050;
+    --status-success: #6aab7e;
 
     /* Diff colors — dark mode
        Strategy: line backgrounds clearly tinted but not overwhelming.
@@ -324,27 +307,27 @@ h6 {
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --surface:          #13151a;
-  --surface-elevated: #1c1f26;
-  --surface-inset:    #0e1014;
-  --surface-overlay:  #22252d;
+  --surface:          #1c1a18;
+  --surface-elevated: #252320;
+  --surface-inset:    #141210;
+  --surface-overlay:  #2a2826;
 
-  --text:           #e2e6ed;
-  --text-secondary: #9aa3b2;
-  --text-muted:     #8b95a5;   /* lighter than light-mode #6b7280 — meets 4.5:1 on dark surfaces */
-  --text-faint:     #3a3f4a;   /* intentionally below 4.5:1 — WCAG 1.4.3 exemption: inactive/disabled only */
-  --text-inverse:   #13151a;
+  --text:           #e8e4df;
+  --text-secondary: #b5b0a9;
+  --text-muted:     #908a84;
+  --text-faint:     #524e4a;
+  --text-inverse:   #1c1a18;
 
-  --border:        rgba(226, 230, 237, 0.10);
-  --border-subtle: rgba(226, 230, 237, 0.05);
-  --border-strong: rgba(226, 230, 237, 0.18);
-  --border-focus:  rgba(96, 165, 250, 0.50);
+  --border:        rgba(232, 228, 223, 0.12);
+  --border-subtle: rgba(232, 228, 223, 0.06);
+  --border-strong: rgba(232, 228, 223, 0.20);
+  --border-focus:  rgba(120, 160, 200, 0.50);
 
-  --accent:        #60a5fa;
+  --accent:        #6ba3c7;
 
-  --status-error:   #f87171;
-  --status-warning: #fbbf24;
-  --status-success: #4ade80;
+  --status-error:   #d4706a;
+  --status-warning: #cca050;
+  --status-success: #6aab7e;
 
   --diff-add-bg:      rgba(0, 255, 230, 0.118);
   --diff-remove-bg:   rgba(255, 53, 35, 0.17);

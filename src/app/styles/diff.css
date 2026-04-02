@@ -119,12 +119,14 @@
   padding: var(--space-1) var(--space-3);
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  transition: background var(--duration-fast) var(--ease-out);
+  /* No transition here — elements in the scroll viewport cause repaint jank.
+     Transition is on :hover only (below) so it only fires on mouse interaction. */
 }
 
 .cm-collapsedLines:hover {
   background: color-mix(in srgb, var(--surface-elevated) 80%, var(--accent)) !important;
   color: var(--text);
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 /* ================================================================
