@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { MergeView, goToNextChunk, goToPreviousChunk } from '@codemirror/merge';
+  import { MergeView } from '@codemirror/merge';
   import { EditorView, lineNumbers, placeholder } from '@codemirror/view';
   import { EditorState, Compartment } from '@codemirror/state';
   import { computeStats } from '../lib/stats';
@@ -21,19 +21,52 @@
   let mergeView: MergeView | undefined;
   const readOnlyCompartment = new Compartment();
 
+  // ─── Scroll sync ────────────────────────────────────────────────────────────
+  // Mutex prevents feedback loops: when A scrolls and we programmatically set B,
+  // B's scroll event fires — the mutex lets us bail instead of ping-ponging.
+
+  const SCROLL_MUTEX_MS = 50;
+  let scrollSource: 'a' | 'b' | null = null;
+  let scrollTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  function computeScrollRatio(el: HTMLElement): number {
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    if (maxScroll <= 0) return 0;
+    return el.scrollTop / maxScroll;
+  }
+
+  function applyScrollRatio(el: HTMLElement, ratio: number): void {
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    if (maxScroll <= 0) return;
+    el.scrollTop = ratio * maxScroll;
+  }
+
+  function handleEditorScroll(source: 'a' | 'b'): void {
+    if (!mergeView) return;
+
+    const opposite: 'a' | 'b' = source === 'a' ? 'b' : 'a';
+
+    // If the other side initiated scrolling, bail — prevents feedback loop
+    if (scrollSource === opposite) return;
+
+    scrollSource = source;
+    clearTimeout(scrollTimeout);
+
+    const sourceEl = mergeView[source].scrollDOM;
+    const targetEl = mergeView[opposite].scrollDOM;
+    const ratio = computeScrollRatio(sourceEl);
+    applyScrollRatio(targetEl, ratio);
+
+    scrollTimeout = setTimeout(() => {
+      scrollSource = null;
+    }, SCROLL_MUTEX_MS);
+  }
+
   // Expose imperative methods via exported functions
   export function setCollapse(enabled: boolean): void {
     mergeView?.reconfigure({
       collapseUnchanged: enabled ? { margin: 3, minSize: 4 } : undefined,
     });
-  }
-
-  export function goToNext(): void {
-    if (mergeView) goToNextChunk(mergeView.b);
-  }
-
-  export function goToPrev(): void {
-    if (mergeView) goToPreviousChunk(mergeView.b);
   }
 
   function makeExtensions(isOriginal: boolean) {
@@ -50,14 +83,12 @@
           }
         }
       }),
-      EditorView.theme({
-        '&': { height: '100%', background: 'var(--surface-inset)' },
-        '.cm-scroller': {
-          overflow: 'auto',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.875rem',
-        },
+      // Accessible name for the contenteditable textbox (WCAG aria-input-field-name)
+      EditorView.contentAttributes.of({
+        'aria-label': isOriginal ? 'Original text editor' : 'Modified text editor',
       }),
+      // Height constraint + scrolling handled by editor.css with
+      // position: absolute !important to beat CM6's internal styles.
     ];
   }
 
@@ -74,7 +105,20 @@
     // Emit initial stats
     onstats(computeStats(mergeView.chunks, mergeView.a.state.doc, mergeView.b.state.doc));
 
-    return () => mergeView?.destroy();
+    // Scroll sync listeners — must be set up here (not in $effect) because
+    // mergeView is a plain let, not $state, so $effect can't track it.
+    const onScrollA = () => handleEditorScroll('a');
+    const onScrollB = () => handleEditorScroll('b');
+    mergeView.a.scrollDOM.addEventListener('scroll', onScrollA, { passive: true });
+    mergeView.b.scrollDOM.addEventListener('scroll', onScrollB, { passive: true });
+
+    return () => {
+      mergeView?.a.scrollDOM.removeEventListener('scroll', onScrollA);
+      mergeView?.b.scrollDOM.removeEventListener('scroll', onScrollB);
+      clearTimeout(scrollTimeout);
+      scrollSource = null;
+      mergeView?.destroy();
+    };
   });
 
   // Sync readOnly prop changes via Compartment

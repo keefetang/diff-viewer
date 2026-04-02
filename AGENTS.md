@@ -25,7 +25,7 @@ Single Cloudflare Worker project with three responsibilities:
 
 **Static assets** (Vite hashed output in `dist/`) are served directly from CDN — the Worker never touches them.
 
-**Diff engine:** `@codemirror/merge` handles all diffing — side-by-side layout, character highlights, scroll sync, alignment spacers, collapse, chunk navigation. No separate diff library. Worker SSR uses `Chunk.build()` for stats and unified diff text.
+**Diff engine:** `@codemirror/merge` handles all diffing — side-by-side layout, character highlights, synchronized scrolling, alignment spacers, collapse. No separate diff library. Worker SSR uses `Chunk.build()` for stats and unified diff text.
 
 ## Project Structure
 
@@ -81,7 +81,7 @@ npx tsc --noEmit     # Worker-only check (faster, skips .svelte files)
 #   stats.ts, tokens.ts, shortcuts.ts, export.ts
 ```
 
-Build must produce: initial JS < 175kb gzipped (currently ~110kb). No lazy-loaded chunks — @codemirror/merge is in the main bundle.
+Build must produce: initial JS < 175kb gzipped. Verify with `npm run build`. No lazy-loaded chunks — @codemirror/merge is in the main bundle.
 
 ## Code Style
 
@@ -154,7 +154,7 @@ ID validation on all endpoints: `/^[A-Za-z0-9_-]{12}$/`. Reject 400 if invalid.
 
 ## Performance Constraints
 
-- **Initial bundle target: < 175kb gzipped** (currently ~110kb: CodeMirror core ~70kb + @codemirror/merge ~15kb + Svelte ~3kb + app ~22kb)
+- **Initial bundle target: < 175kb gzipped** (verify with `npm run build` — single JS + CSS bundle)
 - No lazy-loaded chunks — the entire app loads in one request
 - No DOMPurify, no highlight.js, no language modes — leaner than markdown-viewer
 

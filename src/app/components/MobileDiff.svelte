@@ -5,8 +5,6 @@
     updateOriginalDoc,
     getOriginalDoc,
     getChunks,
-    goToNextChunk,
-    goToPreviousChunk,
   } from '@codemirror/merge';
   import { EditorView, lineNumbers, placeholder } from '@codemirror/view';
   import { EditorState, Compartment, Text, ChangeSet } from '@codemirror/state';
@@ -45,14 +43,6 @@
     });
   }
 
-  export function goToNext(): void {
-    if (view) goToNextChunk(view);
-  }
-
-  export function goToPrev(): void {
-    if (view) goToPreviousChunk(view);
-  }
-
   // ─── View creation ───────────────────────────────────────────────────
 
   function emitStats(): void {
@@ -84,14 +74,10 @@
             emitStats();
           }
         }),
-        EditorView.theme({
-          '&': { height: '100%', background: 'var(--surface-inset)' },
-          '.cm-scroller': {
-            overflow: 'auto',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.875rem',
-          },
-        }),
+        // Accessible name for the contenteditable textbox (WCAG aria-input-field-name)
+        EditorView.contentAttributes.of({ 'aria-label': 'Unified diff editor' }),
+        // Height constraint handled by scoped CSS (.mobile-diff :global(.cm-editor))
+        // with two-class specificity to beat CM6's internal styles.
       ],
       parent: containerEl,
     });

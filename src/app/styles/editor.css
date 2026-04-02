@@ -38,13 +38,40 @@
 }
 
 /* ================================================================
+   MergeView height constraint
+   ================================================================ */
+
+/* MergeView editors: absolute positioning forces .cm-editor to match its
+   parent's flex-derived size. height: 100% doesn't work here because
+   .cm-mergeViewEditor gets its height from flex (flex: 1), not from an
+   explicit height property — browsers don't treat flex-derived heights as
+   definite for percentage resolution on children.
+
+   !important required: CM6 sets position: relative !important on .cm-editor
+   via its generated style sheets. Without !important here, absolute
+   positioning can't take effect regardless of specificity. */
+
+.merge-view-container .cm-mergeViewEditor {
+  position: relative;
+}
+
+.merge-view-container .cm-editor {
+  position: absolute !important;
+  inset: 0;
+}
+
+/* ================================================================
    Gutters
    ================================================================ */
 
+/* !important required: CM6 generates .ͼN .cm-gutters with hardcoded
+   light-mode colors. Our single-class .cm-gutters loses the specificity
+   race, and CM6's styles load after ours in the cascade. */
+
 .cm-gutters {
-  background: var(--surface-elevated);
-  border-right: 1px solid var(--border-subtle);
-  color: var(--text-muted);
+  background: var(--surface-elevated) !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
   min-width: 2.5rem;
   font-size: 0.8125rem;
 }

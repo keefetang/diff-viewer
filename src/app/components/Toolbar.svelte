@@ -3,11 +3,11 @@
    * Application toolbar — all action groups, responsive layout.
    *
    * Desktop (>=768px): full row with logical groups:
-   *   [Diff Viewer | New | Swap] [←Chunk Chunk→ | Collapse] [Export▾ | Copy | Share▾] [Fork | Delete] [Theme] [Save State | Stats]
+   *   [Diff Viewer | New | Swap] [Collapse | Layout] [Export▾ | Copy | Share▾] [Fork | Delete] [Theme] [Save State | Stats]
    *
    * Mobile (<768px): compact bar:
    *   [Swap | Share] [Save State] [⋯]
-   *   Overflow menu: New, Chunk nav, Collapse, Export, Copy, Fork, Delete, Theme, Stats
+   *   Overflow menu: New, Collapse, Export, Copy, Fork, Delete, Theme, Stats
    *
    * Design system: borders-only depth, cool analytical surface, ink text.
    * All values via CSS custom properties — no global.css import.
@@ -34,8 +34,6 @@
     onTitleChange: (title: string) => void;
     onNew: () => void;
     onSwap: () => void;
-    onPrevChunk: () => void;
-    onNextChunk: () => void;
     onToggleCollapse: () => void;
     onToggleLayout?: () => void;
     onExportDiff: () => void;
@@ -63,8 +61,6 @@
     onTitleChange,
     onNew,
     onSwap,
-    onPrevChunk,
-    onNextChunk,
     onToggleCollapse,
     onToggleLayout,
     onExportDiff,
@@ -179,8 +175,8 @@
 
   /** Format a character count as an approximate size string. */
   function formatSize(chars: number): string {
-    if (chars < 1024) return `${chars} B`;
-    return `${Math.round(chars / 1024)} KB`;
+    if (chars < 1000) return `${chars} chars`;
+    return `${Math.round(chars / 1000)}K chars`;
   }
 
   // ─── Derived ──────────────────────────────────────────────────────────────
@@ -247,22 +243,8 @@
       {/if}
     </div>
 
-    <!-- Group 2: Chunk navigation + Collapse -->
+    <!-- Group 2: Collapse + Layout -->
     <div class="btn-group">
-      <button
-        class="tool-btn"
-        onclick={onPrevChunk}
-        title="Previous change (Alt+↑)"
-        aria-label="Previous change"
-        disabled={stats.chunks === 0}
-      >← Prev</button>
-      <button
-        class="tool-btn"
-        onclick={onNextChunk}
-        title="Next change (Alt+↓)"
-        aria-label="Next change"
-        disabled={stats.chunks === 0}
-      >Next →</button>
       <button
         class="tool-btn"
         class:active={isCollapsed}
@@ -273,10 +255,10 @@
       >Collapse</button>
       {#if onToggleLayout}
         <button
-          class="tool-btn"
+          class="tool-btn layout-toggle"
           onclick={onToggleLayout}
           title={layoutMode === 'side-by-side' ? 'Switch to unified view (Cmd+Shift+L)' : 'Switch to side-by-side view (Cmd+Shift+L)'}
-          aria-label={layoutMode === 'side-by-side' ? 'Switch to unified view' : 'Switch to side-by-side view'}
+          aria-label={layoutMode === 'side-by-side' ? 'Split view — switch to unified' : 'Unified view — switch to split'}
         ><!-- layout icon: two columns for split, single column for unified -->
           <svg class="layout-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             {#if layoutMode === 'side-by-side'}
@@ -286,7 +268,7 @@
               <rect x="3" y="2" width="10" height="12" rx="1.5" />
             {/if}
           </svg>
-          <span class="layout-label">{layoutMode === 'side-by-side' ? 'Split' : 'Unified'}</span>
+          {layoutMode === 'side-by-side' ? 'Split' : 'Unified'}
         </button>
       {/if}
     </div>
@@ -475,6 +457,12 @@
           {#if !isReadOnly}
             <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onNew)}>New comparison</button>
           {/if}
+
+          <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onToggleCollapse)}>
+            {isCollapsed ? 'Expand unchanged' : 'Collapse unchanged'}
+          </button>
+
+          <div class="dropdown-divider" role="separator"></div>
 
           <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onExportDiff)}>Export diff (.diff)</button>
           <button class="dropdown-item" role="menuitem" onclick={() => dropdownAction(onExportHtml)}>Export HTML</button>
@@ -875,13 +863,13 @@
 
   /* ── Layout toggle ── */
 
-  .layout-icon {
-    vertical-align: middle;
-    flex-shrink: 0;
+  .layout-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
   }
 
-  .layout-label {
-    margin-left: var(--space-1);
-    vertical-align: middle;
+  .layout-icon {
+    flex-shrink: 0;
   }
 </style>

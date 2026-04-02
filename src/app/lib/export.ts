@@ -110,24 +110,6 @@ export async function copyRichText(
   }
 }
 
-/**
- * Copy unified diff text to clipboard.
- * Returns `true` on success, `false` on failure.
- */
-export async function copyUnifiedDiff(
-  original: string,
-  modified: string,
-  title?: string,
-): Promise<boolean> {
-  const diff = generateUnifiedDiff(original, modified, title);
-  try {
-    await navigator.clipboard.writeText(diff);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Diff algorithm — delegates to @codemirror/merge's Chunk.build()
 // ---------------------------------------------------------------------------
@@ -137,9 +119,9 @@ type EditOp = { type: 'equal'; lineA: number; lineB: number }
   | { type: 'insert'; lineB: number };
 
 /**
- * Compute an edit script between two line arrays using `@codemirror/merge`'s
- * `Chunk.build()`. This reuses the same diff engine the editor uses,
- * replacing the previous hand-rolled O(NM) LCS implementation.
+ * Compute a line-level edit script using `@codemirror/merge`'s `Chunk.build()`.
+ * Same diff engine the editor and SSR use — character-position chunks are
+ * converted to line-level equal/delete/insert operations.
  */
 function computeEdits(linesA: string[], linesB: string[]): EditOp[] {
   const textA = CMText.of(linesA.length === 0 ? [''] : linesA);

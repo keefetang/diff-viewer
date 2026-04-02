@@ -15,7 +15,7 @@ A text diff tool that's fast, private, and yours to deploy. No accounts, no cook
 - **Side-by-side diff** — Line and character-level highlights with vertical alignment
 - **Live updates** — Diffs on every keystroke via CodeMirror 6 merge view
 - **Collapse unchanged** — Focus on changes by collapsing identical regions
-- **Chunk navigation** — Jump between changed regions
+- **Synchronized scrolling** — Both sides scroll together in side-by-side mode
 - **Swap sides** — Swap original ↔ modified with one click
 
 ### Sharing

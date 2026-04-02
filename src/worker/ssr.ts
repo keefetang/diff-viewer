@@ -38,7 +38,7 @@ interface BootstrapData {
 interface DiffStats {
   additions: number;
   deletions: number;
-  chunkCount: number;
+  chunks: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ function computeDiff(original: string, modified: string): {
 
   if (chunks.length === 0) {
     return {
-      stats: { additions: 0, deletions: 0, chunkCount: 0 },
+      stats: { additions: 0, deletions: 0, chunks: 0 },
       unifiedDiff: '--- original\n+++ modified\n',
     };
   }
@@ -136,7 +136,7 @@ function computeDiff(original: string, modified: string): {
   const unifiedDiff = `${header}\n${hunks.join('\n')}`;
 
   return {
-    stats: { additions, deletions, chunkCount: chunks.length },
+    stats: { additions, deletions, chunks: chunks.length },
     unifiedDiff,
   };
 }
@@ -269,7 +269,7 @@ export async function handleSession(request: Request, env: Env, nonce: string): 
   const pageTitle = session.title
     ? session.title
     : `Diff: +${stats.additions} −${stats.deletions} lines`;
-  const description = `${stats.additions} additions, ${stats.deletions} deletions across ${stats.chunkCount} changed regions`;
+  const description = `${stats.additions} additions, ${stats.deletions} deletions across ${stats.chunks} changed regions`;
   const fullUrl = url.href;
 
   // Build bootstrap data (NO editToken — tokens come from URL hash or localStorage)

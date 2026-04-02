@@ -129,14 +129,8 @@ h6 {
   --border-strong: rgba(26, 29, 33, 0.20);
   --border-focus: rgba(37, 99, 235, 0.50);
 
-  /* --- Accent / interactive ---
-     accent:       the blue of a precise technical tool — links, CTAs
-     accent-hover: deeper on hover
-     accent-active: pressed/active
-  */
+  /* --- Accent / interactive --- */
   --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-active: #1e40af;
 
   /* --- Semantic ---
      status-error:   destructive, invalid
@@ -303,10 +297,7 @@ h6 {
     --border-strong: rgba(226, 230, 237, 0.18);
     --border-focus:  rgba(96, 165, 250, 0.50);
 
-    /* Accent — brighter blue for dark background legibility */
     --accent:        #60a5fa;
-    --accent-hover:  #93c5fd;
-    --accent-active: #3b82f6;
 
     /* Semantic — slightly desaturated for dark mode */
     --status-error:   #f87171;
@@ -350,8 +341,6 @@ h6 {
   --border-focus:  rgba(96, 165, 250, 0.50);
 
   --accent:        #60a5fa;
-  --accent-hover:  #93c5fd;
-  --accent-active: #3b82f6;
 
   --status-error:   #f87171;
   --status-warning: #fbbf24;

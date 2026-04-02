@@ -12,10 +12,6 @@ export interface ShortcutHandlers {
   onSave: () => void;
   /** Cmd/Ctrl+Shift+D — copy rich text diff to clipboard */
   onCopyRichText: () => void;
-  /** Alt+↓ — navigate to next diff chunk */
-  onNextChunk: () => void;
-  /** Alt+↑ — navigate to previous diff chunk */
-  onPrevChunk: () => void;
   /** Cmd/Ctrl+Shift+L — toggle layout (side-by-side ↔ unified) */
   onToggleLayout?: () => void;
   /** Esc — dismiss toasts, close popovers */
@@ -48,20 +44,6 @@ export function setupShortcuts(handlers: ShortcutHandlers): () => void {
     if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
       e.preventDefault();
       handlers.onToggleLayout?.();
-      return;
-    }
-
-    // Alt+↓ — next chunk
-    if (e.altKey && !mod && e.key === 'ArrowDown') {
-      e.preventDefault();
-      handlers.onNextChunk();
-      return;
-    }
-
-    // Alt+↑ — prev chunk
-    if (e.altKey && !mod && e.key === 'ArrowUp') {
-      e.preventDefault();
-      handlers.onPrevChunk();
       return;
     }
 

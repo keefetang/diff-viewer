@@ -112,9 +112,9 @@
 
 .cm-collapsedLines {
   background: var(--surface-elevated) !important;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
   cursor: pointer;
   padding: var(--space-1) var(--space-3);
   font-family: var(--font-mono);
@@ -124,7 +124,7 @@
 
 .cm-collapsedLines:hover {
   background: color-mix(in srgb, var(--surface-elevated) 80%, var(--accent)) !important;
-  color: var(--text-secondary);
+  color: var(--text);
 }
 
 /* ================================================================
@@ -141,49 +141,5 @@
   border-right: 2px solid var(--border-subtle);
 }
 
-/* ================================================================
-   Merge view editor gutters
-   ================================================================
-   Gutter background elevated slightly from editor inset.
-   Right border is subtle separation, not emphasis.
-   ================================================================ */
 
-.cm-mergeViewEditor .cm-gutters {
-  background: var(--surface-elevated);
-  border-right: 1px solid var(--border-subtle);
-}
 
-/* ================================================================
-   Chunk action buttons (accept/reject change)
-   ================================================================
-   CM6 renders inline "accept" / "reject" controls on each chunk.
-   Wire them to our accent and semantic tokens.
-   ================================================================ */
-
-.cm-merge-accept,
-.cm-merge-revert {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 0.75rem;
-  padding: 0 var(--space-2);
-  transition:
-    background var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
-}
-
-.cm-merge-accept:hover {
-  background: var(--diff-add-bg);
-  border-color: var(--diff-add-highlight);
-  color: var(--status-success);
-}
-
-.cm-merge-revert:hover {
-  background: var(--diff-remove-bg);
-  border-color: var(--diff-remove-highlight);
-  color: var(--status-error);
-}

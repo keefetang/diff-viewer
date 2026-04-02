@@ -261,12 +261,6 @@
       onCopyRichText() {
         void handleCopyRichText();
       },
-      onNextChunk() {
-        activeEditor()?.goToNext();
-      },
-      onPrevChunk() {
-        activeEditor()?.goToPrev();
-      },
       onToggleLayout() {
         handleToggleLayout();
       },
@@ -378,16 +372,6 @@
   function handleToggleCollapse(): void {
     isCollapsed = !isCollapsed;
     activeEditor()?.setCollapse(isCollapsed);
-  }
-
-  /** Navigate to next diff chunk. */
-  function handleNextChunk(): void {
-    activeEditor()?.goToNext();
-  }
-
-  /** Navigate to previous diff chunk. */
-  function handlePrevChunk(): void {
-    activeEditor()?.goToPrev();
   }
 
   /** Toggle between side-by-side and unified layout. */
@@ -629,8 +613,6 @@
     onTitleChange={handleTitleChange}
     onNew={handleNew}
     onSwap={handleSwap}
-    onPrevChunk={handlePrevChunk}
-    onNextChunk={handleNextChunk}
     onToggleCollapse={handleToggleCollapse}
     onToggleLayout={handleToggleLayout}
     onExportDiff={handleExportDiff}
