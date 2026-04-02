@@ -8,6 +8,8 @@
  * - Copy rich text: Clipboard API with `text/html` + `text/plain` fallback
  */
 
+import { Text as CMText } from '@codemirror/state';
+import { Chunk } from '@codemirror/merge';
 import { escapeForHtml } from '../../shared/escape';
 
 // ---------------------------------------------------------------------------
@@ -35,7 +37,6 @@ export function generateUnifiedDiff(
   const linesA = original.split('\n');
   const linesB = modified.split('\n');
 
-  // Simple LCS-based diff (Myers-like, sufficient for export)
   const edits = computeEdits(linesA, linesB);
   const hunks = buildHunks(edits, linesA, linesB, 3);
 
@@ -128,7 +129,7 @@ export async function copyUnifiedDiff(
 }
 
 // ---------------------------------------------------------------------------
-// Diff algorithm — simple edit script (Myers-like)
+// Diff algorithm — delegates to @codemirror/merge's Chunk.build()
 // ---------------------------------------------------------------------------
 
 type EditOp = { type: 'equal'; lineA: number; lineB: number }
@@ -136,42 +137,63 @@ type EditOp = { type: 'equal'; lineA: number; lineB: number }
   | { type: 'insert'; lineB: number };
 
 /**
- * Compute an edit script between two line arrays using a simple O(NM)
- * LCS approach. Good enough for export — we don't need the editor's
- * character-level precision here.
+ * Compute an edit script between two line arrays using `@codemirror/merge`'s
+ * `Chunk.build()`. This reuses the same diff engine the editor uses,
+ * replacing the previous hand-rolled O(NM) LCS implementation.
  */
 function computeEdits(linesA: string[], linesB: string[]): EditOp[] {
-  const n = linesA.length;
-  const m = linesB.length;
+  const textA = CMText.of(linesA.length === 0 ? [''] : linesA);
+  const textB = CMText.of(linesB.length === 0 ? [''] : linesB);
 
-  // Build LCS table
-  const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0) as number[]);
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      if (linesA[i] === linesB[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const chunks = Chunk.build(textA, textB, { scanLimit: 500 });
+  const edits: EditOp[] = [];
+
+  // Current 0-based line positions in A and B
+  let lineA = 0;
+  let lineB = 0;
+
+  for (const chunk of chunks) {
+    // Convert character positions to 0-based line indices
+    const chunkStartA = textA.lineAt(chunk.fromA).number - 1;
+    const chunkStartB = textB.lineAt(chunk.fromB).number - 1;
+
+    const chunkEndA = chunk.fromA === chunk.toA
+      ? chunkStartA // pure insertion — no A-side lines affected
+      : textA.lineAt(Math.min(chunk.toA - 1, textA.length - 1)).number - 1;
+
+    const chunkEndB = chunk.fromB === chunk.toB
+      ? chunkStartB // pure deletion — no B-side lines affected
+      : textB.lineAt(Math.min(chunk.toB - 1, textB.length - 1)).number - 1;
+
+    // Emit equal ops for lines between previous position and this chunk
+    while (lineA < chunkStartA && lineB < chunkStartB) {
+      edits.push({ type: 'equal', lineA, lineB });
+      lineA++;
+      lineB++;
+    }
+
+    // Emit delete ops for A-side lines in the chunk
+    if (chunk.fromA !== chunk.toA) {
+      for (let i = chunkStartA; i <= chunkEndA; i++) {
+        edits.push({ type: 'delete', lineA: i });
       }
+      lineA = chunkEndA + 1;
+    }
+
+    // Emit insert ops for B-side lines in the chunk
+    if (chunk.fromB !== chunk.toB) {
+      for (let i = chunkStartB; i <= chunkEndB; i++) {
+        edits.push({ type: 'insert', lineB: i });
+      }
+      lineB = chunkEndB + 1;
     }
   }
 
-  // Trace back to produce edit script
-  const edits: EditOp[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && linesA[i] === linesB[j]) {
-      edits.push({ type: 'equal', lineA: i, lineB: j });
-      i++;
-      j++;
-    } else if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) {
-      edits.push({ type: 'insert', lineB: j });
-      j++;
-    } else {
-      edits.push({ type: 'delete', lineA: i });
-      i++;
-    }
+  // Emit remaining equal ops after the last chunk
+  while (lineA < linesA.length && lineB < linesB.length) {
+    edits.push({ type: 'equal', lineA, lineB });
+    lineA++;
+    lineB++;
   }
 
   return edits;

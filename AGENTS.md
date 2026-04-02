@@ -108,7 +108,7 @@ Build must produce: initial JS < 175kb gzipped (currently ~110kb). No lazy-loade
 - **Interfaces/Types:** PascalCase (`SessionMetadata`, `DiffStats`, `SaveState`).
 - **Constants:** UPPER_SNAKE for module-level (`MAX_CONTENT_LENGTH`, `EXPIRATION_TTL`, `SESSION_ID_RE`).
 - **Functions:** camelCase. Prefix handlers with `handle` (`handleApi`, `handleSession`).
-- **CSS tokens:** domain-specific names (`--ink`, `--paper`, `--diff-add-bg`, `--diff-remove-bg`). Never generic (`--gray-700`, `--bg-primary`). See `src/app/styles/global.css`.
+- **CSS tokens:** domain-specific names (`--surface`, `--text`, `--border`, `--accent`, `--diff-add-bg`, `--diff-remove-bg`). Never generic (`--gray-700`, `--bg-primary`). See `src/app/styles/global.css`.
 
 ### Error Handling
 - **Worker API:** Global try/catch in `handleApi`. All errors return `{ error: string }` JSON — never stack traces, binding names, or internal details.
