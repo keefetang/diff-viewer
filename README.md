@@ -4,7 +4,7 @@ A text diff tool that's fast, private, and yours to deploy. No accounts, no cook
 
 **[Try the live demo →](https://diff.pentagram.me)**
 
-<!-- TODO: Add screenshot showing side-by-side diff in dark mode -->
+https://github.com/user-attachments/assets/859c6d7c-5cf6-4191-8df2-45838d338575
 
 > **Private by default.** No cookies. No user accounts. No personal data collected or stored. Sessions contain only the two texts you're comparing, an optional title, and timestamps. Nothing else.
 
