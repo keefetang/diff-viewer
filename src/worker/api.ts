@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { timingSafeEqual } from './shared';
+import { timingSafeEqual, sessionHeaders, checkIfNoneMatch, computeExpiresAt } from './shared';
 import type { DiffSessionValue, SessionMetadata } from './shared';
 
 // ---------------------------------------------------------------------------
@@ -30,12 +30,18 @@ const AGENT_EXPIRATION_TTL = 2_592_000; // 30 days — agent/script-created sess
 // Helpers
 // ---------------------------------------------------------------------------
 
-function jsonResponse(body: unknown, status: number, corsHeaders: Headers): Response {
+function jsonResponse(
+  body: unknown,
+  status: number,
+  corsHeaders: Headers,
+  extraHeaders?: Record<string, string>,
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
       ...Object.fromEntries(corsHeaders),
+      ...extraHeaders,
     },
   });
 }
@@ -48,7 +54,8 @@ function corsHeaders(env: Env): Headers {
   const headers = new Headers();
   headers.set('Access-Control-Allow-Origin', env.CORS_ORIGIN || '*');
   headers.set('Access-Control-Allow-Methods', 'GET, PUT, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Edit-Token, X-Private');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Edit-Token, X-Private, If-Match, If-None-Match, If-Modified-Since');
+  headers.set('Access-Control-Expose-Headers', 'ETag, Last-Modified, X-Expires-At');
   headers.set('Access-Control-Max-Age', '86400');
   return headers;
 }
@@ -224,6 +231,18 @@ async function handleGet(
     }
   }
 
+  // Conditional retrieval — 304 when client already has current version.
+  // Checked after auth so private sessions don't leak existence via 304.
+  if (checkIfNoneMatch(request, metadata.updatedAt)) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ...Object.fromEntries(cors),
+        ...sessionHeaders(metadata),
+      },
+    });
+  }
+
   // KV value is a JSON-serialized DiffSessionValue
   let session: DiffSessionValue;
   try {
@@ -243,9 +262,11 @@ async function handleGet(
         updatedAt: metadata.updatedAt,
       },
       private: !!metadata.private,
+      expiresAt: computeExpiresAt(metadata),
     },
     200,
     cors,
+    sessionHeaders(metadata),
   );
 }
 
@@ -357,9 +378,11 @@ async function handlePut(
         private: isPrivate,
         url: `${origin}/${id}`,
         editUrl: `${origin}/${id}#token=${editToken}`,
+        expiresAt: computeExpiresAt(metadata),
       },
       201,
       cors,
+      sessionHeaders(metadata),
     );
   }
 
@@ -400,9 +423,11 @@ async function handlePut(
         id,
         metadata: { createdAt: existingMeta.createdAt, updatedAt: now },
         private: isPrivate,
+        expiresAt: computeExpiresAt(metadata),
       },
       200,
       cors,
+      sessionHeaders(metadata),
     );
   }
 

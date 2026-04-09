@@ -23,7 +23,7 @@ Single Cloudflare Worker project with three responsibilities:
 
 **Hybrid rendering:** `/:id` routes are server-rendered for crawlers/AI agents (OG meta tags, unified diff text). The SPA boots from injected bootstrap data without a redundant API fetch. The root `/` serves the SPA shell with OG tags, hidden SEO content (feature description in `#content`), and runtime config injected via HTMLRewriter. Private sessions get the bare SPA shell — no SSR, no OG tags, no bootstrap data (the edit token lives in the URL hash which never reaches the server).
 
-**Content negotiation:** Both `/` and `/:id` check the `Accept` header. When `Accept: text/markdown` is present (and `text/html` is absent), `/` returns a markdown description of the tool and `/:id` returns the unified diff as plain text. Private sessions require `X-Edit-Token` for content negotiation too. This enables CLI tools (`curl -H 'Accept: text/markdown'`) and AI agents to fetch content without parsing HTML.
+**Content negotiation:** Both `/` and `/:id` support two ways to request raw content: the `Accept: text/markdown` header (for programmatic clients) or the `?format=diff` query parameter (for browser address bars, links, and docs). When either is used, `/` returns a markdown description of the tool and `/:id` returns the unified diff as plain text. Private sessions require `X-Edit-Token` for content negotiation too. This enables CLI tools (`curl -H 'Accept: text/markdown'`), AI agents, and direct browser links (`https://diff.pentagram.me/:id?format=diff`) to fetch content without parsing HTML.
 
 **Static assets** (Vite hashed output in `dist/`) are served directly from CDN — the Worker never touches them.
 
@@ -105,6 +105,7 @@ Build must produce: initial JS < 175kb gzipped. Verify with `npm run build`. No 
 - Worker files: section with `// ---- Section Name ----` banner comments.
 - Svelte files: `<script lang="ts">` with imports grouped: svelte → libraries → local components → local lib → types.
 - CSS imports in `.svelte` via `import './styles/foo.css'` (side-effect imports).
+- Shared code (`src/shared/`) must never use browser-only APIs (`document`, `window`, `localStorage`).
 
 ### Naming Conventions
 - **Files:** lowercase-kebab for `.ts`/`.css`, PascalCase for `.svelte` components.
@@ -150,10 +151,10 @@ KV TTL:       7,776,000 seconds (90 days) for browser sessions, 2,592,000 (30 da
 ### API Surface
 | Method | Path | Auth | Behavior |
 |--------|------|------|----------|
-| GET | `/api/sessions/:id` | Conditional | Read session. Private sessions require `X-Edit-Token` (returns 404 without — hides existence). Returns `{ id, original, modified, title, metadata: { createdAt, updatedAt }, private }`. Never returns editToken. |
-| PUT | `/api/sessions/:id` | Conditional | Accepts `application/json`. Body accepts `private: boolean`. Also accepts `X-Private: true` header (agents may prefer headers). No token + new → CREATE (201 + `{ id, editToken, private, url, editUrl }`). Valid token + exists → UPDATE (200). Invalid/missing token + exists → 403. Turnstile is a fast-pass, not a gate — absent tokens skip verification (rate limiting fallback). |
+| GET | `/api/sessions/:id` | Conditional | Read session. Private sessions require `X-Edit-Token` (returns 404 without — hides existence). Returns `{ id, original, modified, title, metadata: { createdAt, updatedAt }, private, expiresAt }`. Conditional: `If-None-Match` → 304, `If-Modified-Since` → 304. All responses include `ETag`, `Last-Modified`, `Vary: Accept`, `X-Expires-At` headers. Never returns editToken. |
+| PUT | `/api/sessions/:id` | Conditional | Accepts `application/json`. Body accepts `private: boolean`. Also accepts `X-Private: true` header (agents may prefer headers). No token + new → CREATE (201 + `{ id, editToken, private, url, editUrl, expiresAt }`). Valid token + exists → UPDATE (200 + `{ id, metadata, private, expiresAt }`). Invalid/missing token + exists → 403. All success responses include `ETag`, `Last-Modified`, `Vary: Accept`, `X-Expires-At` headers. Turnstile is a fast-pass, not a gate — absent tokens skip verification (rate limiting fallback). |
 | DELETE | `/api/sessions/:id` | `X-Edit-Token` | Deletes session. 403 without valid token. |
-| OPTIONS | `/api/*` | None | CORS preflight. `Access-Control-Allow-Headers` includes `X-Edit-Token, X-Private`. |
+| OPTIONS | `/api/*` | None | CORS preflight. `Access-Control-Allow-Headers` includes `X-Edit-Token, X-Private, If-Match, If-None-Match, If-Modified-Since`. `Access-Control-Expose-Headers` includes `ETag, Last-Modified, X-Expires-At`. |
 
 ID validation on all endpoints: `/^[A-Za-z0-9_-]{12}$/`. Reject 400 if invalid.
 

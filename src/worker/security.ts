@@ -41,8 +41,10 @@ export class NonceInjector implements HTMLRewriterElementContentHandlers {
  * Clone a Response with security headers applied.
  *
  * @param response - The original response to wrap.
- * @param isApi - When `true`, adds `Cache-Control: no-store` and
- *   `X-Robots-Tag: noindex` (API responses should never be cached or indexed).
+ * @param isApi - When `true`, adds `Cache-Control: no-cache` and
+ *   `X-Robots-Tag: noindex`. `no-cache` (not `no-store`) allows conditional
+ *   revalidation via ETag/If-None-Match — caches may store the response but
+ *   must revalidate with origin before serving.
  * @param nonce - Per-request nonce for CSP `script-src`. Required for HTML
  *   responses so Cloudflare Bot Management (JavaScript Detections) can inject
  *   its scripts — CF reads nonces from the CSP header automatically. Must be
@@ -94,7 +96,7 @@ export function applySecurityHeaders(response: Response, isApi: boolean, nonce?:
 
   // -- API-specific headers --
   if (isApi) {
-    headers.set('Cache-Control', 'no-store');
+    headers.set('Cache-Control', 'no-cache');
     headers.set('X-Robots-Tag', 'noindex');
   }
 

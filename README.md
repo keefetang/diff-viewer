@@ -37,18 +37,28 @@ https://github.com/user-attachments/assets/859c6d7c-5cf6-4191-8df2-45838d338575
 - **PDF** — Full diff rendered via iframe (not limited to visible viewport)
 - **Clipboard** — Copy as rich text
 
-### Agent / API Access
+### Programmatic Access
 
 AI agents and scripts can create, update, and read sessions via pure HTTP — no SDK, no browser, no API key.
 
 ```bash
-# Create a session (body is raw markdown/text)
+# Create a session
 curl -X PUT https://diff.pentagram.me/api/sessions/SESSION_ID \
   -H "Content-Type: application/json" \
   -d '{"original": "old text", "modified": "new text", "title": "My diff"}'
 
-# Read as unified diff
+# Read as JSON (API)
+curl https://diff.pentagram.me/api/sessions/SESSION_ID
+
+# Read as unified diff (content negotiation)
 curl -H "Accept: text/markdown" https://diff.pentagram.me/SESSION_ID
+
+# Read as unified diff (URL-friendly — works in a browser)
+# https://diff.pentagram.me/SESSION_ID?format=diff
+
+# Conditional request — returns 304 if unchanged
+curl -H 'If-None-Match: W/"1712345678901"' \
+  https://diff.pentagram.me/api/sessions/SESSION_ID
 
 # Create a private session
 curl -X PUT https://diff.pentagram.me/api/sessions/SESSION_ID \
@@ -56,12 +66,9 @@ curl -X PUT https://diff.pentagram.me/api/sessions/SESSION_ID \
   -d '{"original": "old", "modified": "new", "private": true}'
 ```
 
+All session responses include `ETag`, `Last-Modified`, and `Vary: Accept` headers. Use `If-None-Match` or `If-Modified-Since` for conditional requests — the server returns 304 with an empty body when the session hasn't changed, skipping diff computation and body serialization.
+
 Creation returns `{ id, editToken, url, editUrl }`. Agent-created sessions (no Turnstile token) get 30-day retention; browser-created sessions get 90 days. Rate limiting is the only gate — no API key required.
-
-### SEO & Content Negotiation
-
-- **Crawler-friendly index** — OG meta tags and feature description injected via HTMLRewriter
-- **`Accept: text/markdown`** on `/:id` returns unified diff as plain text
 
 Dark mode (system + manual override), mobile responsive layout with bottom sheet menu, and keyboard shortcuts for all primary actions.
 

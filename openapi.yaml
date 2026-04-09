@@ -1,0 +1,365 @@
+openapi: 3.0.3
+
+info:
+  title: Diff Viewer API
+  description: |
+    REST API for the Diff Viewer — a side-by-side text diff sharing tool.
+    Sessions store an original and modified text pair with an optional title.
+    Edit tokens authenticate write operations. Private sessions require an
+    edit token for all access.
+
+    **Content limit:** 1 MB (combined serialized size of original + modified + title).
+    **Expiry:** 90 days for browser-created sessions (Turnstile verified),
+    30 days for agent/script-created sessions. TTL resets on every write.
+    **ID format:** 12-character URL-safe nanoid matching `[A-Za-z0-9_-]{12}`.
+    **Binary content** (null bytes in any field) is rejected.
+  version: 1.0.0
+
+servers:
+  - url: https://diff.pentagram.me
+    description: Production
+
+security: []
+
+components:
+
+  securitySchemes:
+    editToken:
+      type: apiKey
+      in: header
+      name: X-Edit-Token
+      description: >
+        Edit token for write operations and reading private sessions.
+        Returned on creation (201). Cannot be retrieved after that — store it.
+
+  parameters:
+    sessionId:
+      name: id
+      in: path
+      required: true
+      description: 12-character URL-safe session ID
+      schema:
+        $ref: '#/components/schemas/SessionId'
+
+  schemas:
+
+    SessionId:
+      type: string
+      pattern: '^[A-Za-z0-9_\-]{12}$'
+      description: 12-character URL-safe nanoid
+      example: abc123def456
+
+    SessionMetadata:
+      type: object
+      required: [createdAt, updatedAt]
+      properties:
+        createdAt:
+          type: integer
+          description: Unix timestamp in milliseconds
+          example: 1700000000000
+        updatedAt:
+          type: integer
+          description: Unix timestamp in milliseconds
+          example: 1700000001000
+
+    DiffSession:
+      type: object
+      required: [id, original, modified, metadata, private]
+      properties:
+        id:
+          $ref: '#/components/schemas/SessionId'
+        original:
+          type: string
+          description: Original (left-side) text content
+        modified:
+          type: string
+          description: Modified (right-side) text content
+        title:
+          type: string
+          description: Optional display title shown in the diff header
+        metadata:
+          $ref: '#/components/schemas/SessionMetadata'
+        private:
+          type: boolean
+          description: When true, viewing requires a valid edit token
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the session expires. Absent for legacy sessions without TTL.
+
+    DiffSessionRequest:
+      type: object
+      required: [original, modified]
+      properties:
+        original:
+          type: string
+          description: Original text. Null bytes (binary content) are rejected.
+        modified:
+          type: string
+          description: Modified text. Null bytes (binary content) are rejected.
+        title:
+          type: string
+          description: Optional display title. Null bytes are rejected.
+        private:
+          type: boolean
+          description: When true, viewing requires an edit token (default false)
+        turnstileToken:
+          type: string
+          description: Cloudflare Turnstile verification token. Browser clients should provide this to get a 90-day TTL. Agent/script clients without a token get a 30-day TTL.
+
+    DiffSessionCreateResponse:
+      type: object
+      description: Returned on successful session creation (201)
+      required: [id, metadata, editToken, private, url, editUrl]
+      properties:
+        id:
+          $ref: '#/components/schemas/SessionId'
+        metadata:
+          $ref: '#/components/schemas/SessionMetadata'
+        editToken:
+          type: string
+          description: >
+            Token required for all future writes to this session.
+            Store it immediately — it cannot be retrieved later.
+          example: AbCdEfGhIjKlMnOpQrStUvWx
+        private:
+          type: boolean
+        url:
+          type: string
+          format: uri
+          description: Shareable URL for this diff
+          example: https://diff.pentagram.me/abc123def456
+        editUrl:
+          type: string
+          format: uri
+          description: URL with edit token in the hash fragment — /{id}#token={editToken}
+          example: https://diff.pentagram.me/abc123def456#token=AbCdEfGhIjKlMnOpQrStUvWx
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the session expires
+
+    DiffSessionUpdateResponse:
+      type: object
+      description: Returned on successful session update (200)
+      required: [id, metadata, private]
+      properties:
+        id:
+          $ref: '#/components/schemas/SessionId'
+        metadata:
+          $ref: '#/components/schemas/SessionMetadata'
+        private:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the session expires
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: Session not found
+
+  responses:
+    NotFound:
+      description: Session not found or access denied (private sessions return 404, not 403)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Missing or invalid edit token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooLarge:
+      description: Combined content exceeds 1 MB limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+paths:
+
+  /api/sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/sessionId'
+
+    get:
+      operationId: getSession
+      summary: Read a diff session
+      description: |
+        Retrieve a diff session by ID, including both text sides and metadata.
+        Private sessions require `X-Edit-Token`. Returns 404 for both "not
+        found" and "access denied" to avoid revealing the existence of
+        private sessions.
+
+        Supports conditional requests via `If-None-Match` (ETag comparison)
+        and `If-Modified-Since` (date comparison). Returns 304 when the
+        session has not changed, skipping body serialization.
+      tags: [Sessions]
+      parameters:
+        - name: X-Edit-Token
+          in: header
+          description: Required for private sessions
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          description: Return 304 if the ETag matches (weak comparison per RFC 9110)
+          schema:
+            type: string
+          example: 'W/"1700000001000"'
+        - name: If-Modified-Since
+          in: header
+          description: Return 304 if the session has not been modified since this date. Ignored when If-None-Match is present.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Session retrieved successfully
+          headers:
+            ETag:
+              description: Weak ETag derived from updatedAt — `W/"<updatedAt>"`
+              schema:
+                type: string
+                example: 'W/"1700000001000"'
+            Last-Modified:
+              description: HTTP date of last update
+              schema:
+                type: string
+            X-Expires-At:
+              description: HTTP date when the session expires
+              schema:
+                type: string
+            Vary:
+              description: Content negotiation signal — response varies by Accept header
+              schema:
+                type: string
+                example: Accept
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiffSession'
+        '304':
+          description: Not Modified — session has not changed since the conditional request headers
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    put:
+      operationId: putSession
+      summary: Create or update a diff session
+      description: |
+        **Create (201):** no `X-Edit-Token` header + new ID.
+        **Update (200):** valid `X-Edit-Token` + existing ID.
+
+        Accepts `application/json` only. Content limit: 1 MB (combined
+        serialized size). Binary content (null bytes) is rejected.
+
+        The private flag can be set via the JSON body or the `X-Private`
+        header. On update, omitting the flag preserves the existing setting.
+      tags: [Sessions]
+      parameters:
+        - name: X-Edit-Token
+          in: header
+          description: Required for updating an existing session
+          schema:
+            type: string
+        - name: X-Private
+          in: header
+          description: Set to "true" to make the session private (alternative to JSON body field)
+          schema:
+            type: string
+            enum: ['true', 'false']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiffSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiffSessionCreateResponse'
+        '200':
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiffSessionUpdateResponse'
+        '400':
+          description: Invalid request body, missing required fields, or binary content detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Bot verification failed (invalid Turnstile token) or invalid edit token on update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Session not found when edit token is provided but session does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          description: Unsupported Media Type — only application/json is accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      operationId: deleteSession
+      summary: Delete a diff session
+      description: Permanently deletes a session. Requires a valid edit token.
+      tags: [Sessions]
+      security:
+        - editToken: []
+      parameters:
+        - name: X-Edit-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Session deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+tags:
+  - name: Sessions
+    description: Diff session CRUD operations

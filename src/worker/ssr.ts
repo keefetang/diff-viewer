@@ -155,7 +155,7 @@ class TitleHandler implements HTMLRewriterElementContentHandlers {
     this.title = title;
   }
 
-  text(text: { replace(s: string, options?: { html?: boolean }): void; remove(): void }): void {
+  text(text: Text): void {
     if (!this.replaced) {
       text.replace(escapeText(this.title));
       this.replaced = true;
@@ -174,7 +174,9 @@ class HeadHandler implements HTMLRewriterElementContentHandlers {
   }
 
   element(el: Element): void {
-    el.append(this.tags, { html: true });
+    // Indent each tag to match <head> children (4 spaces).
+    const indented = this.tags.split('\n').join('\n    ');
+    el.append(`\n    ${indented}`, { html: true });
   }
 }
 
@@ -187,7 +189,9 @@ class ContentHandler implements HTMLRewriterElementContentHandlers {
   }
 
   element(el: Element): void {
-    el.append(this.html, { html: true });
+    // Indent to match #content children (6 spaces)
+    // and restore #content closing tag indentation (4 spaces).
+    el.append(`\n      ${this.html}\n    `, { html: true });
   }
 }
 
@@ -200,9 +204,9 @@ class BodyHandler implements HTMLRewriterElementContentHandlers {
   }
 
   element(el: Element): void {
-    for (const snippet of this.snippets) {
-      el.append(snippet, { html: true });
-    }
+    // Indent each snippet to match <body> children (4 spaces).
+    const indented = this.snippets.join('\n    ');
+    el.append(`\n    ${indented}`, { html: true });
   }
 }
 
@@ -282,7 +286,9 @@ export async function handleSession(request: Request, env: Env, nonce: string): 
   const pageTitle = session.title
     ? session.title
     : `Diff: +${stats.additions} −${stats.deletions} lines`;
-  const description = `${stats.additions} additions, ${stats.deletions} deletions across ${stats.chunks} changed regions`;
+  const description = session.title
+    ? `${session.title} — ${stats.additions} additions, ${stats.deletions} deletions`
+    : `${stats.additions} additions, ${stats.deletions} deletions across ${stats.chunks} changed regions`;
   const fullUrl = url.href;
 
   // Build bootstrap data (NO editToken — tokens come from URL hash or localStorage)
@@ -335,8 +341,8 @@ export async function handleSession(request: Request, env: Env, nonce: string): 
     );
   }
 
-  // Build the content div HTML — unified diff in a <pre> for crawlers
-  const contentHtml = `<pre>${escapeText(unifiedDiff)}</pre>`;
+  // Build the content div HTML — unified diff in a semantic <article> for crawlers
+  const contentHtml = `<article><pre>${escapeText(unifiedDiff)}</pre></article>`;
 
   // Fetch the SPA shell from static assets
   const shellResponse = await env.ASSETS.fetch(new Request(`${url.origin}/index.html`));

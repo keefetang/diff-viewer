@@ -2,7 +2,7 @@ import { handleApi, handleCorsPreflight } from './api';
 import { getIndexHtml, getIndexMarkdown } from './index-content';
 import { applySecurityHeaders, NonceInjector } from './security';
 import { handleSession, computeDiff } from './ssr';
-import { escapeForHtml, timingSafeEqual } from './shared';
+import { escapeForHtml, timingSafeEqual, sessionHeaders, checkIfNoneMatch } from './shared';
 import type { DiffSessionValue, SessionMetadata } from './shared';
 
 interface Env {
@@ -57,6 +57,15 @@ async function handleDiffContent(request: Request, env: Env, sessionId: string):
     }
   }
 
+  // Conditional retrieval — 304 when client already has current version.
+  // Checked after auth so private sessions don't leak existence via 304.
+  if (checkIfNoneMatch(request, metadata.updatedAt)) {
+    return new Response(null, {
+      status: 304,
+      headers: sessionHeaders(metadata),
+    });
+  }
+
   let session: DiffSessionValue;
   try {
     session = JSON.parse(content) as DiffSessionValue;
@@ -71,14 +80,17 @@ async function handleDiffContent(request: Request, env: Env, sessionId: string):
 
   // X-Robots-Tag and Cache-Control added by applySecurityHeaders (isApi=true)
   return new Response(unifiedDiff, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      ...sessionHeaders(metadata),
+    },
   });
 }
 
 // ---- Router ----
 
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
 
@@ -98,10 +110,14 @@ export default {
         return handleRobotsTxt();
       }
 
-      // Content negotiation — Accept: text/markdown returns raw content.
+      // Content negotiation — Accept: text/markdown or ?format=diff returns
+      // raw content. ?format=diff is the URL-friendly alternative for contexts
+      // where you can't control headers (browser address bar, links, docs).
       // Wrapped with applySecurityHeaders (isApi=true) for consistent
       // security posture (HSTS, nosniff, noindex, etc.).
-      if (wantsMarkdown(request)) {
+      const format = url.searchParams.get('format');
+
+      if (wantsMarkdown(request) || format === 'diff') {
         if (pathname === '/') {
           const mdResponse = new Response(getIndexMarkdown(), {
             headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
@@ -193,18 +209,22 @@ async function handleAssets(request: Request, env: Env, url: URL, nonce: string)
     rewriter = rewriter
       .on('head', {
         element(el) {
-          el.append([
-            `<meta property="og:title" content="Diff Viewer" />`,
-            `<meta property="og:description" content="A fast, privacy-first text diff tool. Paste two texts, see a live diff with line and character-level highlights, and share via URL." />`,
-            `<meta property="og:type" content="website" />`,
-            `<meta property="og:url" content="${indexUrl}" />`,
-            `<meta name="twitter:card" content="summary" />`,
-          ].join('\n'), { html: true });
+          // Indent each tag to match <head> children (4 spaces).
+          el.append(
+            '\n    ' + [
+              `<meta property="og:title" content="Diff Viewer" />`,
+              `<meta property="og:description" content="A fast, privacy-first text diff tool. Paste two texts, see a live diff with line and character-level highlights, and share via URL." />`,
+              `<meta property="og:type" content="website" />`,
+              `<meta property="og:url" content="${indexUrl}" />`,
+              `<meta name="twitter:card" content="summary" />`,
+            ].join('\n    '),
+            { html: true },
+          );
         },
       })
       .on('div#content', {
         element(el) {
-          el.setInnerContent(getIndexHtml(), { html: true });
+          el.setInnerContent(`\n      ${getIndexHtml().replace(/\n/g, '\n      ')}\n    `, { html: true });
         },
       });
   }
@@ -214,7 +234,7 @@ async function handleAssets(request: Request, env: Env, url: URL, nonce: string)
     rewriter = rewriter.on('body', {
       element(el) {
         el.append(
-          `<script nonce="${nonce}" defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"${token}"}'></script>`,
+          `\n    <script nonce="${nonce}" defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"${token}"}'></script>\n  `,
           { html: true },
         );
       },
@@ -226,7 +246,7 @@ async function handleAssets(request: Request, env: Env, url: URL, nonce: string)
     rewriter = rewriter.on('head', {
       element(el) {
         el.append(
-          `<script nonce="${nonce}">window.__TURNSTILE_KEY__="${siteKey}";</script>`,
+          `\n    <script nonce="${nonce}">window.__TURNSTILE_KEY__="${siteKey}";</script>\n  `,
           { html: true },
         );
       },
