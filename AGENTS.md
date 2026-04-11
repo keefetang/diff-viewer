@@ -192,3 +192,12 @@ When working on this project, load these skills as relevant:
 - `typescript` — type conventions
 - `interface-design` — UI craft, design system, component patterns
 - `web-perf` — Lighthouse, Core Web Vitals measurement
+
+
+## Git Conventions
+
+- **Always confirm with the user before pushing to remote.** No autonomous pushes.
+- **Squash related commits before pushing** when possible — keep the history clean and meaningful.
+- **Force push is allowed** for the repo admin but should be used deliberately (e.g., squashing before push, not after).
+- **Branch protection:** PRs must pass CI (`check` job) before merging. Direct pushes to main are allowed.
+- **Dependabot:** Patch/minor PRs can be merged if CI passes. Major version bumps should be tested locally first.
