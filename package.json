@@ -39,7 +39,7 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
     "nanoid": "^5.1.7",
-    "svelte": "^5.0.0"
+    "svelte": "^5.55.4"
   },
   "cloudflare": {
     "bindings": {
