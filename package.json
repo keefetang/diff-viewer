@@ -58,7 +58,7 @@
     }
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260411.1",
+    "@cloudflare/workers-types": "^4.20260418.1",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^6.0.2",
